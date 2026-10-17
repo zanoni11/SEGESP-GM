@@ -1,0 +1,7 @@
+📁 segesp-gm/
+├── 📁 supabase/
+│   └── 📄 schema.sql
+├── 📄 .gitignore
+├── 📄 index.html
+├── 📄 README.md
+└── 📄 supabase.js          ← criar no Bloco 1
