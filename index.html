@@ -5782,6 +5782,86 @@ save();
 render();
 let lastMobile = isMobile(), rt;
 window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (isMobile() !== lastMobile) { lastMobile = isMobile(); if (!modalAberto()) render(); } }, 200); });
+
+  
+/* ============================================================
+   LOGIN COM SUPABASE (overlay bloqueante)
+   ============================================================ */
+let _sessaoSupabase = null;
+
+async function iniciarLoginSupabase() {
+  if (!window.sb) {
+    console.warn('[SEGESP-GM] supabase.js não carregou — login desabilitado');
+    return;
+  }
+  try {
+    const { data: { session } } = await window.sb.supa.auth.getSession();
+    _sessaoSupabase = session;
+    if (!session) {
+      mostrarOverlayLogin();
+    } else {
+      console.log('[SEGESP-GM] Sessão ativa:', session.user.email);
+    }
+  } catch (e) {
+    console.warn('[SEGESP-GM] Erro ao verificar sessão:', e.message);
+    mostrarOverlayLogin();
+  }
+}
+
+function mostrarOverlayLogin(erro) {
+  const overlay = document.createElement('div');
+  overlay.id = 'login-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:32px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <h2 style="color:#0e7490;font-size:22px;font-weight:700;margin:0 0 4px">SEGESP-GM</h2>
+      <p style="color:#64748b;font-size:14px;margin:0 0 24px">Entre para continuar</p>
+      ${erro ? `<div style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px">${erro}</div>` : ''}
+      <form id="login-form" style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#334155">E-mail</label>
+          <input id="login-email" type="email" required autocomplete="username" style="width:100%;height:44px;border:1px solid #cbd5e1;border-radius:8px;padding:0 12px;font-size:15px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#334155">Senha</label>
+          <input id="login-senha" type="password" required autocomplete="current-password" style="width:100%;height:44px;border:1px solid #cbd5e1;border-radius:8px;padding:0 12px;font-size:15px;box-sizing:border-box">
+        </div>
+        <button type="submit" id="login-btn" style="width:100%;height:44px;background:#0e7490;color:#fff;border:0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px">Entrar</button>
+        <div id="login-msg" style="text-align:center;font-size:13px;color:#dc2626;min-height:18px"></div>
+      </form>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const form = document.getElementById('login-form');
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
+    const senha = document.getElementById('login-senha').value;
+    const btn = document.getElementById('login-btn');
+    const msg = document.getElementById('login-msg');
+    btn.disabled = true;
+    btn.textContent = 'Entrando...';
+    msg.textContent = '';
+    try {
+      const { error } = await window.sb.supa.auth.signInWithPassword({ email, password: senha });
+      if (error) throw new Error(error.message);
+      msg.style.color = '#16a34a';
+      msg.textContent = 'Login OK — recarregando...';
+      setTimeout(() => location.reload(), 500);
+    } catch (e) {
+      msg.style.color = '#dc2626';
+      msg.textContent = e.message === 'Invalid login credentials' ? 'E-mail ou senha inválidos' : e.message;
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    }
+  };
+
+  setTimeout(() => document.getElementById('login-email')?.focus(), 100);
+}
+
+// Inicia após 300ms (para o supabase.js terminar de carregar)
+setTimeout(iniciarLoginSupabase, 300);
+
 </script>
 </body>
 </html>
