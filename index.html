@@ -396,8 +396,7 @@ function loadState() {
 }
 let state = loadState();
 
-// Chama o início
-iniciarApp();
+
 let _ultimoBackupSalvo = 0, _saveAgendado = null;
 function _lerBackupMeta() { try { return JSON.parse(localStorage.getItem(BACKUP_META_KEY) || '{}') || {}; } catch (e) { return {}; } }
 function _gravarBackupMeta(meta) { try { localStorage.setItem(BACKUP_META_KEY, JSON.stringify(meta)); } catch (e) {} }
