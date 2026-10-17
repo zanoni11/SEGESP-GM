@@ -393,7 +393,111 @@ function loadState() {
   } catch (e) { console.warn('Falha ao ler dados salvos', e); }
   return seedState();
 }
-let state = loadState();
+let state = null;
+let _usuarioLogado = null;
+
+async function iniciarApp() {
+  try {
+    // 1. Verifica se há usuário logado no Supabase
+    const user = await window.sb.usuarioAtual();
+    
+    if (!user) {
+      // 2. Se não está logado, mostra tela de login
+      mostrarTelaLogin();
+      return;
+    }
+    
+    // 3. Se está logado, busca o perfil
+    const perfil = await window.sb.perfilAtual();
+    if (!perfil) {
+      mostrarTelaLogin('Usuário autenticado, mas sem perfil cadastrado. Contate o administrador.');
+      return;
+    }
+    
+    _usuarioLogado = { ...user, ...perfil };
+    console.log('[SEGESP-GM] Login OK:', perfil.nome, '-', perfil.perfil);
+    
+    // 4. Carrega dados do Supabase
+    await carregarEstadoDoBanco();
+    render();
+    
+  } catch (e) {
+    console.error('[SEGESP-GM] Erro ao iniciar:', e);
+    mostrarTelaLogin('Erro ao conectar: ' + e.message);
+  }
+}
+
+async function carregarEstadoDoBanco() {
+  // Por enquanto, carrega só o que é essencial para não quebrar
+  const [guardas, equipes, ciclos, ancoras, funcoes] = await Promise.all([
+    window.sb.ler('guardas'),
+    window.sb.ler('equipes'),
+    window.sb.ler('ciclos'),
+    window.sb.ler('ancoras'),
+    window.sb.ler('funcoes')
+  ]);
+  
+  state = {
+    ...seedState(),        // pega o estado inicial do app (tem defaults)
+    guardas: guardas.map(g => window.sb.paraApp(g)),
+    equipes: equipes.map(e => window.sb.paraApp(e)),
+    ciclos: ciclos.map(c => window.sb.paraApp(c)),
+    ancorasHist: ancoras.map(a => window.sb.paraApp(a)),
+    funcoes: funcoes.map(f => window.sb.paraApp(f))
+  };
+}
+
+function mostrarTelaLogin(erro) {
+  const el = $('main');
+  if (!el) return;
+  
+  el.innerHTML = `
+    <div class="min-h-[70vh] flex items-center justify-center p-4">
+      <div class="w-full max-w-sm bg-white rounded-xl border border-slate-200 p-6 shadow-lg">
+        <h2 class="text-xl font-bold text-primary mb-1">SEGESP-GM</h2>
+        <p class="text-sm text-slate-500 mb-6">Entre para continuar</p>
+        ${erro ? `<div class="bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg p-3 mb-4">${esc(erro)}</div>` : ''}
+        <form onsubmit="fazerLogin(event)">
+          <div class="mb-3">
+            <label class="block text-sm font-medium mb-1">E-mail</label>
+            <input id="login-email" type="email" class="w-full h-11 border border-slate-300 rounded-lg px-3" required autocomplete="username">
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium mb-1">Senha</label>
+            <input id="login-senha" type="password" class="w-full h-11 border border-slate-300 rounded-lg px-3" required autocomplete="current-password">
+          </div>
+          <button type="submit" id="login-btn" class="w-full h-11 bg-primary text-white rounded-lg font-semibold hover:opacity-90">Entrar</button>
+          <div id="login-erro" class="text-sm text-red-700 mt-3 min-h-[20px]"></div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+async function fazerLogin(ev) {
+  ev.preventDefault();
+  const email = $('login-email').value.trim();
+  const senha = $('login-senha').value;
+  const btn = $('login-btn');
+  const erroEl = $('login-erro');
+  
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+  erroEl.textContent = '';
+  
+  try {
+    await window.sb.login(email, senha);
+    // Recarrega tudo
+    await iniciarApp();
+  } catch (e) {
+    erroEl.textContent = e.message || 'Falha no login';
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+}
+
+// Chama o início
+iniciarApp();
 let _ultimoBackupSalvo = 0, _saveAgendado = null;
 function _lerBackupMeta() { try { return JSON.parse(localStorage.getItem(BACKUP_META_KEY) || '{}') || {}; } catch (e) { return {}; } }
 function _gravarBackupMeta(meta) { try { localStorage.setItem(BACKUP_META_KEY, JSON.stringify(meta)); } catch (e) {} }
