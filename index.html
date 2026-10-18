@@ -684,6 +684,7 @@ function syncClique() {
 function mostrarCarregando(msg, acoes) {
   const el = $('carregando'); el.hidden = false;
   $('carregando-msg').textContent = msg || 'Carregando dados…';
+  el.querySelectorAll('.carregando-caixa > p:not(#carregando-msg)').forEach(x => x.remove());
   $('carregando-acoes').innerHTML = acoes || '';
   el.classList.toggle('com-erro', !!acoes);
 }
@@ -703,8 +704,13 @@ async function iniciarApp() {
   } catch (e) {
     console.warn('[SEGESP-GM] Falha ao carregar do servidor:', e && e.message);
     if (!cache) {
-      mostrarCarregando(navigator.onLine ? 'Não foi possível carregar os dados do servidor.' : 'Sem conexão com a internet.',
-        '<button onclick="iniciarApp()" class="login-btn" style="padding:0 18px">Tentar de novo</button><button onclick="sairSupabase()" class="login-btn" style="padding:0 18px;background:#64748b">Sair</button>');
+      const tipo = classificarErro(e), detalhe = String((e && e.message) || '').slice(0, 200);
+      const msg = !navigator.onLine ? 'Sem conexão com a internet.'
+        : tipo === 'estrutura' ? 'O banco ainda não recebeu a migração (supabase/migracao_002.sql). Avise o ADMINISTRADOR.'
+        : tipo === 'perm' ? 'Seu perfil não tem permissão para ler os dados. Avise o ADMINISTRADOR.'
+        : 'Não foi possível carregar os dados do servidor.';
+      mostrarCarregando(msg, '<button onclick="iniciarApp()" class="login-btn" style="padding:0 18px">Tentar de novo</button><button onclick="sairSupabase()" class="login-btn" style="padding:0 18px;background:#64748b">Sair</button>');
+      if (navigator.onLine && detalhe) { const d = document.createElement('p'); d.style.cssText = 'font-size:11px;color:#64748b;word-break:break-word'; d.textContent = 'Detalhe técnico: ' + detalhe; $('carregando-msg').after(d); }
       setSync(navigator.onLine ? 'erro' : 'offline');
       return;
     }
