@@ -5789,9 +5789,19 @@ window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() =
    ============================================================ */
 let _sessaoSupabase = null;
 
+function aguardarSupabase(limiteMs = 10000) {
+  return new Promise(resolve => {
+    if (window.sb) return resolve(true);
+    const t = setTimeout(() => resolve(!!window.sb), limiteMs);
+    window.addEventListener('sb-pronto', () => { clearTimeout(t); resolve(true); }, { once: true });
+  });
+}
+
 async function iniciarLoginSupabase() {
-  if (!window.sb) {
-    console.warn('[SEGESP-GM] supabase.js não carregou — login desabilitado');
+  const pronto = await aguardarSupabase();
+  if (!pronto) {
+    console.warn('[SEGESP-GM] supabase.js não carregou');
+    mostrarOverlayLogin('Não foi possível conectar ao servidor. Verifique a internet e recarregue a página.');
     return;
   }
   try {
@@ -5860,7 +5870,7 @@ function mostrarOverlayLogin(erro) {
 }
 
 // Inicia após 300ms (para o supabase.js terminar de carregar)
-setTimeout(iniciarLoginSupabase, 300);
+iniciarLoginSupabase();
 
 </script>
 </body>

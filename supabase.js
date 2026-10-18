@@ -155,3 +155,4 @@ window.sb = {
 };
 
 console.log('[SEGESP-GM] supabase.js carregado');
+window.dispatchEvent(new Event('sb-pronto'));
