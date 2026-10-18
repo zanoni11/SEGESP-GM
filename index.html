@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
+<meta name="theme-color" content="#0e7490">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="SEGESP">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Escalas GM</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
@@ -68,6 +76,57 @@
   .overlay.open { display: block; }
   @media (prefers-reduced-motion: reduce) { .sheet { transition: none; } }
 
+  /* Menu lateral (drawer) no celular */
+  .drawer { position: fixed; top: 0; bottom: 0; left: 0; width: min(84vw, 300px); background: #fff; z-index: 60;
+    display: flex; flex-direction: column; transform: translateX(-100%); transition: transform .22s ease;
+    box-shadow: 0 0 24px rgba(15,23,42,.25); visibility: hidden;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  .drawer.open { transform: translateX(0); visibility: visible; }
+  .drawer:not(.open) { transition: transform .22s ease, visibility 0s linear .22s; }
+  .drawer-bg { position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 55; opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+  .drawer-bg.open { opacity: 1; pointer-events: auto; }
+  @media (min-width: 768px) { .drawer, .drawer-bg { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .drawer, .drawer:not(.open), .drawer-bg { transition: none; } }
+
+  /* Tela de login (CSS próprio: funciona mesmo se o Tailwind não carregar) */
+  .login-tela { position: fixed; inset: 0; z-index: 9999; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex;
+    background: linear-gradient(160deg, #0e7490 0%, #155e75 55%, #164e63 100%); color: #fff;
+    padding: calc(env(safe-area-inset-top, 0px) + 24px) calc(env(safe-area-inset-right, 0px) + 16px)
+             calc(env(safe-area-inset-bottom, 0px) + 20px) calc(env(safe-area-inset-left, 0px) + 16px); }
+  .login-wrap { margin: auto; width: 100%; max-width: 400px; }
+  .login-topo { text-align: center; margin-bottom: 20px; }
+  .login-brasao { width: 84px; height: 84px; object-fit: contain; margin: 0 auto 10px; display: block; }
+  .login-escudo { width: 84px; height: 84px; margin: 0 auto 10px; border-radius: 50%; background: rgba(255,255,255,.15);
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); display: flex; align-items: center; justify-content: center; font-size: 44px; }
+  .login-escudo[hidden], .login-brasao[hidden] { display: none; }
+  .login-topo h1 { font-size: 26px; font-weight: 800; letter-spacing: .02em; margin: 0; }
+  .login-topo p { font-size: 15px; opacity: .9; margin: 2px 0 0; }
+  .login-card { background: #fff; color: #1e293b; border-radius: 16px; padding: 22px 20px; box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    display: flex; flex-direction: column; gap: 6px; }
+  .login-card h2 { font-size: 18px; font-weight: 700; color: #0e7490; margin: 0 0 6px; }
+  .login-card label { font-size: 14px; font-weight: 600; color: #334155; margin-top: 6px; }
+  .login-card input[type=email], .login-card input[type=password], .login-card input[type=text] { width: 100%; height: 48px;
+    border: 1px solid #cbd5e1; border-radius: 10px; padding: 0 12px; background: #fff; color: #0f172a; box-sizing: border-box; }
+  .login-card input:focus { outline: 2px solid #0e7490; outline-offset: 1px; border-color: #0e7490; }
+  .login-senha { position: relative; }
+  .login-senha input { padding-right: 52px !important; }
+  .login-senha button { position: absolute; top: 0; right: 0; width: 48px; height: 48px; border: 0; background: none;
+    font-size: 20px; cursor: pointer; border-radius: 10px; }
+  .login-lembrar { display: flex !important; align-items: center; gap: 10px; font-weight: 500 !important; min-height: 44px; cursor: pointer; }
+  .login-lembrar input { width: 20px; height: 20px; accent-color: #0e7490; }
+  .login-btn { height: 50px; border: 0; border-radius: 10px; background: #0e7490; color: #fff; font-size: 16px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 4px; }
+  .login-btn:disabled { opacity: .75; cursor: progress; }
+  .login-spin { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%;
+    animation: login-gira .8s linear infinite; }
+  .login-spin[hidden] { display: none; }
+  @keyframes login-gira { to { transform: rotate(360deg); } }
+  .login-erro { background: #fee2e2; color: #991b1b; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.35; }
+  .login-erro[hidden] { display: none; }
+  .login-rodape { text-align: center; font-size: 13px; margin-top: 18px; opacity: .9; line-height: 1.5; }
+  .login-rodape p { margin: 0; }
+  .login-versao { font-size: 12px; opacity: .75; margin-top: 4px !important; }
+
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
     :root { padding: 0; }
@@ -103,18 +162,27 @@
     <p id="side-inst" class="text-xs text-slate-500 truncate"></p>
     <button onclick="abrirBusca()" class="tt mt-2 w-full text-left text-xs text-slate-500 hover:text-primary flex items-center gap-1.5"><span>🔍</span> Buscar <span class="ml-auto text-[10px] opacity-60">Ctrl+K</span></button>
   </div>
-  <nav id="side-nav" class="flex-1 p-2 space-y-1 overflow-y-auto"></nav>
+  <nav id="side-nav" class="flex-1 p-2 space-y-1 overflow-y-auto" aria-label="Telas"></nav>
+  <div id="side-user"></div>
+</aside>
+
+<div id="drawer-bg" class="drawer-bg no-print" onclick="fecharDrawer()"></div>
+<aside id="drawer" class="drawer no-print" aria-label="Menu" aria-hidden="true" inert>
+  <div class="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+    <div class="min-w-0 flex-1"><div class="text-lg font-bold text-primary">Escalas GM</div><p id="drawer-inst" class="text-xs text-slate-500 truncate"></p></div>
+    <button onclick="fecharDrawer()" aria-label="Fechar menu" class="tt text-slate-500 text-2xl leading-none">&times;</button>
+  </div>
+  <nav id="drawer-nav" class="flex-1 p-2 space-y-1 overflow-y-auto" aria-label="Telas"></nav>
+  <div id="drawer-user"></div>
 </aside>
 
 <div class="md:ml-56">
-  <header class="md:hidden bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between sticky z-30 no-print" style="top:0">
-    <h1 class="text-lg font-bold text-primary">Escalas GM</h1>
-    <div class="flex items-center gap-2"><button onclick="abrirBusca()" aria-label="Buscar" class="tt text-primary text-xl">🔍</button><span id="head-title" class="text-xs text-slate-500"></span></div>
+  <header class="md:hidden bg-white border-b border-slate-200 px-2 py-1.5 flex items-center gap-1 sticky z-30 no-print" style="top:0">
+    <button id="btn-menu" onclick="abrirDrawer()" aria-label="Abrir menu" aria-controls="drawer" aria-expanded="false" class="tt text-primary text-2xl leading-none">☰</button>
+    <div class="min-w-0 flex-1"><h1 class="text-base font-bold text-primary leading-tight">Escalas GM</h1><div id="head-title" class="text-xs text-slate-500 truncate"></div></div>
+    <button onclick="abrirBusca()" aria-label="Buscar" class="tt text-primary text-xl">🔍</button>
   </header>
-  <main id="main" class="p-3 md:p-6 pb-28 md:pb-6"></main>
-  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-30 no-print" style="padding-bottom: env(safe-area-inset-bottom, 0px)">
-    <div id="mob-nav" class="flex justify-around items-stretch h-14"></div>
-  </nav>
+  <main id="main" class="p-3 md:p-6" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.5rem)"></main>
 </div>
 
 <script>
@@ -123,6 +191,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
+const VERSAO_APP = '2026.10.18';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
 const BACKUP_META_KEY = 'escalasGM.pinhais.backup.meta';
@@ -620,13 +689,60 @@ function toast(msg, tipo = 'ok', acao = null) {
   setTimeout(() => el.remove(), acao ? 10500 : 4000);
 }
 function openModal(titulo, body, foot = '', tall = false) {
+  if (drawerAberto()) fecharDrawer(true);
   $('m-title').textContent = titulo; $('m-body').innerHTML = body; $('m-foot').innerHTML = foot;
   $('sheet').classList.toggle('tall', tall);
   $('overlay').classList.add('open'); $('sheet').classList.add('open');
+  histAbrirCamada();
 }
-function closeModal() { $('overlay').classList.remove('open'); $('sheet').classList.remove('open'); }
+function closeModal(viaVoltar) {
+  const estava = modalAberto();
+  $('overlay').classList.remove('open'); $('sheet').classList.remove('open');
+  if (estava && viaVoltar !== true) histFecharCamada();
+}
 const modalAberto = () => $('sheet').classList.contains('open');
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (drawerAberto()) fecharDrawer(); else closeModal(); } });
+
+/* ---------- Botão Voltar (Android): fecha menu/modal antes de trocar de tela ----------
+   Ao abrir o menu ou um modal, empilha uma entrada no histórico com o mesmo endereço.
+   Voltar remove essa entrada e fecha a camada; fechar pela tela desfaz a entrada. */
+let _histCamada = false, _histVoltaPend = null;
+function histAbrirCamada() {
+  if (_histVoltaPend) { clearTimeout(_histVoltaPend); _histVoltaPend = null; _histCamada = true; return; }   // reaproveita a entrada
+  if (_histCamada) return;
+  _histCamada = true;
+  try { history.pushState({ camada: 1 }, ''); } catch (e) { _histCamada = false; }
+}
+function histFecharCamada() {
+  if (!_histCamada || drawerAberto() || modalAberto()) return;
+  _histCamada = false;
+  // adiado: se em seguida vier go() ou outro modal, a entrada é reaproveitada em vez de voltar
+  _histVoltaPend = setTimeout(() => { _histVoltaPend = null; history.back(); }, 0);
+}
+window.addEventListener('popstate', () => {
+  if (!_histCamada) return;
+  _histCamada = false;
+  if (drawerAberto()) fecharDrawer(true);
+  if (modalAberto()) closeModal(true);
+});
+
+/* ---------- Menu lateral (drawer) no celular ---------- */
+const drawerAberto = () => $('drawer').classList.contains('open');
+function abrirDrawer() {
+  if (modalAberto()) closeModal();
+  const d = $('drawer');
+  d.classList.add('open'); $('drawer-bg').classList.add('open');
+  d.inert = false; d.setAttribute('aria-hidden', 'false'); $('btn-menu').setAttribute('aria-expanded', 'true');
+  histAbrirCamada();
+  setTimeout(() => (d.querySelector('[aria-current="page"]') || d.querySelector('button'))?.focus(), 60);
+}
+function fecharDrawer(viaVoltar) {
+  const d = $('drawer');
+  if (!d.classList.contains('open')) return;
+  d.classList.remove('open'); $('drawer-bg').classList.remove('open');
+  d.inert = true; d.setAttribute('aria-hidden', 'true'); $('btn-menu').setAttribute('aria-expanded', 'false');
+  if (viaVoltar !== true) histFecharCamada();
+}
 
 let _confirmFn = null;
 function confirmar(titulo, html, fn, rotulo = 'Confirmar', perigo = false) {
@@ -666,27 +782,62 @@ const NAV = [
   { id: 'cadastros', label: 'Cadastros', icon: '🗂️' },
   { id: 'config', label: 'Configurações', icon: '⚙️' },
 ];
+const NAV_GRUPOS = [
+  { titulo: 'Escala', ids: ['hoje', 'semana', 'mes'] },
+  { titulo: 'Pessoal', ids: ['guarda', 'equipe', 'efetivo', 'requal'] },
+  { titulo: 'Ocorrências', ids: ['extras', 'ocorr', 'superv'] },
+  { titulo: 'Recursos', ids: ['frota'] },
+  { titulo: 'Documentos', ids: ['docs', 'ipm', 'especial'] },
+  { titulo: 'Sistema', ids: ['cadastros', 'config'] },
+];
+// Telas que dependem do perfil (ação verificada com can()); as demais aparecem para todos
+const NAV_PERM = { superv: 'supervisao.ver', cadastros: 'tela.cadastros', config: 'tela.config' };
+const ROTAS = [...NAV.map(n => n.id), 'docsup'];   // docsup: pré-visualização de impressão, aberta pelas telas
+const podeVerTela = id => !NAV_PERM[id] || can(NAV_PERM[id]);
 let view = 'hoje';
 
 function renderNav() {
-  $('side-nav').innerHTML = NAV.map(n => `
-    <button onclick="go('${n.id}')" class="tt w-full flex items-center gap-3 px-3 rounded-lg text-left text-sm ${view === n.id ? 'bg-primary text-white font-medium' : 'text-slate-700 hover:bg-slate-100'}">
-      <span aria-hidden="true">${n.icon}</span><span>${n.label}</span></button>`).join('');
-  const mais = NAV.slice(4).some(n => n.id === view);
-  $('mob-nav').innerHTML = NAV.slice(0, 4).map(n => `
-    <button onclick="go('${n.id}')" class="flex-1 flex flex-col items-center justify-center ${view === n.id ? 'text-primary font-semibold' : 'text-slate-500'}">
-      <span class="text-lg leading-none" aria-hidden="true">${n.icon}</span><span class="text-[11px] mt-0.5">${n.label}</span></button>`).join('') +
-    `<button onclick="abrirMais()" class="flex-1 flex flex-col items-center justify-center ${mais ? 'text-primary font-semibold' : 'text-slate-500'}">
-      <span class="text-lg leading-none" aria-hidden="true">⋯</span><span class="text-[11px] mt-0.5">Mais</span></button>`;
+  const ativo = view === 'docsup' ? 'docs' : view;
+  const html = NAV_GRUPOS.map(g => {
+    const itens = g.ids.map(id => NAV.find(n => n.id === id)).filter(n => n && podeVerTela(n.id));
+    if (!itens.length) return '';
+    return `<div class="space-y-1 pb-2">
+      <div class="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">${g.titulo}</div>
+      ${itens.map(n => `<button onclick="go('${n.id}')" ${ativo === n.id ? 'aria-current="page"' : ''} class="tt w-full flex items-center gap-3 px-3 rounded-lg text-left text-sm ${ativo === n.id ? 'bg-primary text-white font-medium' : 'text-slate-700 hover:bg-slate-100'}">
+        <span aria-hidden="true">${n.icon}</span><span>${n.label}</span></button>`).join('')}</div>`;
+  }).join('');
+  $('side-nav').innerHTML = html;
+  $('drawer-nav').innerHTML = html;
   $('side-inst').textContent = state.instituicao;
-  $('head-title').textContent = NAV.find(n => n.id === view)?.label || '';
+  $('drawer-inst').textContent = state.instituicao;
+  $('head-title').textContent = NAV.find(n => n.id === ativo)?.label || '';
+  $('side-user').innerHTML = $('drawer-user').innerHTML = blocoUsuarioHTML();
 }
-function abrirMais() {
-  openModal('Mais', NAV.slice(4).map(n => `
-    <button onclick="closeModal();go('${n.id}')" class="tt w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left hover:bg-slate-100">
-      <span class="text-xl" aria-hidden="true">${n.icon}</span><span class="font-medium">${n.label}</span></button>`).join(''));
+
+/* ---------- Rotas: #/hoje, #/mes… (botão Voltar troca de tela) ---------- */
+const rotaDoHash = () => (location.hash.match(/^#\/([\w-]+)/) || [])[1] || '';
+function aplicarRota() {
+  let v = rotaDoHash();
+  if (!ROTAS.includes(v) || !podeVerTela(v)) {
+    v = 'hoje';
+    try { history.replaceState(history.state, '', '#/hoje'); } catch (e) {}
+  }
+  if (drawerAberto()) fecharDrawer(true);
+  view = v; render(); window.scrollTo(0, 0);
 }
-function go(v) { view = v; render(); window.scrollTo(0, 0); }
+window.addEventListener('hashchange', aplicarRota);
+function go(v) {
+  const alvo = '#/' + v;
+  if (drawerAberto()) fecharDrawer(true);
+  if (_histVoltaPend || _histCamada) {
+    // veio de um menu/modal: troca a entrada dele pela nova tela, sem empilhar
+    clearTimeout(_histVoltaPend); _histVoltaPend = null; _histCamada = false;
+    try { history.replaceState(null, '', alvo); } catch (e) {}
+    aplicarRota(); return;
+  }
+  if (location.hash === alvo) { aplicarRota(); return; }
+  location.hash = alvo;   // o evento hashchange chama aplicarRota()
+}
 
 function _a11yClicaveis() {
   document.querySelectorAll('[onclick]').forEach(el => {
@@ -4008,15 +4159,17 @@ const fmtDataHora = iso8 => { if (!iso8) return '—'; const d = new Date(iso8);
 /* ---------- Usuários, permissões e auditoria (base estrutural) ---------- */
 const PERMISSOES = {
   ADMINISTRADOR: ['*'],
-  COMANDO: ['especial.editar', 'ipm.editar', 'frota.gerir', 'supervisao.ver', 'supervisao.abrir', 'supervisao.editar', 'supervisao.fechar', 'supervisao.editarFechada', 'cadastros.supervisao', 'ci.criar', 'ci.assinar', 'usuarios.ver'],
+  COMANDO: ['especial.editar', 'ipm.editar', 'frota.gerir', 'supervisao.ver', 'supervisao.abrir', 'supervisao.editar', 'supervisao.fechar', 'supervisao.editarFechada', 'cadastros.supervisao', 'ci.criar', 'ci.assinar', 'usuarios.ver', 'tela.cadastros'],
   'SUPERVISÃO': ['supervisao.ver', 'supervisao.abrir', 'supervisao.editar', 'supervisao.fechar', 'ci.criar', 'ci.assinar'],
-  'COORDENAÇÃO': ['especial.editar', 'supervisao.ver', 'ci.criar', 'ci.assinar'],
+  'COORDENAÇÃO': ['especial.editar', 'supervisao.ver', 'ci.criar', 'ci.assinar', 'tela.cadastros'],
   OPERACIONAL: ['supervisao.ver']
 };
 const usuarioAtual = () => state.usuarios.find(u => u.id === sessaoUserId && u.ativo) || null;
 const modoAberto = () => state.usuarios.length === 0;   // sem usuários cadastrados o sistema segue como antes (sem restrição)
+let _perfilSb = null;   // linha da tabela usuarios do Supabase (preenchida após o login)
 function can(acao) {
   if (typeof somenteLeitura !== 'undefined' && somenteLeitura && acao !== 'supervisao.ver') return false;
+  if (_perfilSb) { const p = PERMISSOES[_perfilSb.perfil] || []; return p.includes('*') || p.includes(acao); }
   if (modoAberto()) return true;
   const u = usuarioAtual(); if (!u) return acao === 'supervisao.ver';
   const p = PERMISSOES[u.perfil] || []; return p.includes('*') || p.includes(acao);
@@ -4581,7 +4734,7 @@ async function supSalvarSenha(id) {
 }
 function supEntrar(id) { const u = state.usuarios.find(x => x.id === id && x.ativo); if (!u) return; sessaoUserId = id; try { localStorage.setItem('escalasgm_user', id); } catch (e) { /* sem armazenamento */ } auditar('usuario', id, 'entrada', `${u.nome} (${u.perfil})`); save(); closeModal(); render(); toast(`Operando como ${u.nome}`); }
 function supSair() { const u = usuarioAtual(); if (u) auditar('usuario', u.id, 'saida', u.nome); sessaoUserId = ''; try { localStorage.removeItem('escalasgm_user'); } catch (e) { /* sem armazenamento */ } save(); render(); }
-const ACOES_ROT = { 'ipm.editar': 'Ajustar a escala IPM e a relação de liderança', 'frota.gerir': 'Editar cadastro de viaturas', 'supervisao.ver': 'Ver supervisões', 'supervisao.abrir': 'Abrir supervisão', 'supervisao.editar': 'Editar serviço aberto', 'supervisao.fechar': 'Fechar serviço', 'supervisao.editarFechada': 'Alterar serviço fechado', 'cadastros.supervisao': 'Editar cadastros', 'ci.criar': 'Criar C.I.', 'ci.assinar': 'Assinar C.I.', 'usuarios.gerir': 'Gerir usuários' };
+const ACOES_ROT = { 'tela.cadastros': 'Ver a tela Cadastros', 'tela.config': 'Ver a tela Configurações', 'ipm.editar': 'Ajustar a escala IPM e a relação de liderança', 'frota.gerir': 'Editar cadastro de viaturas', 'supervisao.ver': 'Ver supervisões', 'supervisao.abrir': 'Abrir supervisão', 'supervisao.editar': 'Editar serviço aberto', 'supervisao.fechar': 'Fechar serviço', 'supervisao.editarFechada': 'Alterar serviço fechado', 'cadastros.supervisao': 'Editar cadastros', 'ci.criar': 'Criar C.I.', 'ci.assinar': 'Assinar C.I.', 'usuarios.gerir': 'Gerir usuários' };
 function supSecaoUsuarios() {
   if (!(modoAberto() || can('usuarios.gerir') || can('usuarios.ver'))) return '';
   const u = usuarioAtual(), us = state.usuarios, aud = state.auditoria.slice(-30).reverse();
@@ -5746,7 +5899,7 @@ function processarJSON() {
 let tx = 0, ty = 0;
 document.addEventListener('touchstart', e => { tx = e.changedTouches[0].clientX; ty = e.changedTouches[0].clientY; }, { passive: true });
 document.addEventListener('touchend', e => {
-  if (view !== 'hoje' || modalAberto()) return;
+  if (view !== 'hoje' || modalAberto() || drawerAberto()) return;
   const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
   if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) mudarDia(dx < 0 ? 1 : -1);
 }, { passive: true });
@@ -5779,15 +5932,19 @@ window.addEventListener('storage', ev => {
 });
 
 save();
-render();
+if (rotaDoHash() === 'docsup') { try { history.replaceState(null, '', '#/docs'); } catch (e) {} }   // pré-visualização não sobrevive a recarregar
+aplicarRota();
 let lastMobile = isMobile(), rt;
-window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (isMobile() !== lastMobile) { lastMobile = isMobile(); if (!modalAberto()) render(); } }, 200); });
+window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (!isMobile() && drawerAberto()) fecharDrawer(); if (isMobile() !== lastMobile) { lastMobile = isMobile(); if (!modalAberto()) render(); } }, 200); });
 
   
 /* ============================================================
-   LOGIN COM SUPABASE (overlay bloqueante)
+   LOGIN COM SUPABASE (tela cheia bloqueante)
    ============================================================ */
 let _sessaoSupabase = null;
+const LEMBRAR_EMAIL_KEY = 'escalasgm_login_email';
+const MSG_SEM_INTERNET = 'Sem conexão com a internet. Verifique a rede e tente novamente.';
+const MSG_SEM_SERVIDOR = 'Não foi possível conectar ao servidor. Verifique a internet e recarregue a página.';
 
 function aguardarSupabase(limiteMs = 10000) {
   return new Promise(resolve => {
@@ -5797,80 +5954,159 @@ function aguardarSupabase(limiteMs = 10000) {
   });
 }
 
+function traduzErroLogin(e) {
+  const m = String((e && e.message) || e || '');
+  if (!navigator.onLine || /failed to fetch|networkerror|load failed|network request failed|fetch/i.test(m)) return MSG_SEM_INTERNET;
+  if (/invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
+  if (/email not confirmed/i.test(m)) return 'E-mail ainda não confirmado. Procure a Coordenação Administrativa.';
+  if (/rate limit|too many/i.test(m)) return 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.';
+  return 'Não foi possível entrar. Tente novamente.';
+}
+
+// Confere se o usuário autenticado tem cadastro ativo na tabela usuarios
+async function carregarPerfilSb() {
+  const { data: { user }, error: eu } = await window.sb.supa.auth.getUser();
+  if (eu && !/session/i.test(eu.message || '')) throw eu;
+  if (!user) return { ok: false, msg: 'Sua sessão expirou. Entre novamente.' };
+  const { data, error } = await window.sb.supa.from('usuarios').select('id, nome, matricula, login, perfil, ativo').eq('id', user.id).maybeSingle();
+  if (error) throw error;
+  if (!data) return { ok: false, msg: 'Seu usuário não tem cadastro no sistema. Procure a Coordenação Administrativa.' };
+  if (!data.ativo) return { ok: false, msg: 'Seu usuário está inativo. Procure a Coordenação Administrativa.' };
+  return { ok: true, perfil: data };
+}
+
 async function iniciarLoginSupabase() {
-  const pronto = await aguardarSupabase();
+  const pronto = window.sb || navigator.onLine ? await aguardarSupabase() : false;   // sem internet: não espera os 10s
   if (!pronto) {
     console.warn('[SEGESP-GM] supabase.js não carregou');
-    mostrarOverlayLogin('Não foi possível conectar ao servidor. Verifique a internet e recarregue a página.');
+    mostrarTelaLogin(navigator.onLine ? MSG_SEM_SERVIDOR : MSG_SEM_INTERNET);
     return;
   }
   try {
     const { data: { session } } = await window.sb.supa.auth.getSession();
     _sessaoSupabase = session;
-    if (!session) {
-      mostrarOverlayLogin();
-    } else {
-      console.log('[SEGESP-GM] Sessão ativa:', session.user.email);
-    }
+    if (!session) return mostrarTelaLogin();
+    const r = await carregarPerfilSb();
+    if (!r.ok) { try { await window.sb.logout(); } catch (e) {} return mostrarTelaLogin(r.msg); }
+    _perfilSb = r.perfil;
+    console.log('[SEGESP-GM] Sessão ativa:', session.user.email);
+    aplicarRota();   // atualiza menu (perfil e nome) e sai de telas que o perfil não vê
   } catch (e) {
-    console.warn('[SEGESP-GM] Erro ao verificar sessão:', e.message);
-    mostrarOverlayLogin();
+    console.warn('[SEGESP-GM] Erro ao verificar sessão:', e && e.message);
+    mostrarTelaLogin(traduzErroLogin(e));
   }
 }
 
-function mostrarOverlayLogin(erro) {
-  const overlay = document.createElement('div');
-  overlay.id = 'login-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
-  overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:32px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-      <h2 style="color:#0e7490;font-size:22px;font-weight:700;margin:0 0 4px">SEGESP-GM</h2>
-      <p style="color:#64748b;font-size:14px;margin:0 0 24px">Entre para continuar</p>
-      ${erro ? `<div style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px">${erro}</div>` : ''}
-      <form id="login-form" style="display:flex;flex-direction:column;gap:12px">
-        <div>
-          <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#334155">E-mail</label>
-          <input id="login-email" type="email" required autocomplete="username" style="width:100%;height:44px;border:1px solid #cbd5e1;border-radius:8px;padding:0 12px;font-size:15px;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;color:#334155">Senha</label>
-          <input id="login-senha" type="password" required autocomplete="current-password" style="width:100%;height:44px;border:1px solid #cbd5e1;border-radius:8px;padding:0 12px;font-size:15px;box-sizing:border-box">
-        </div>
-        <button type="submit" id="login-btn" style="width:100%;height:44px;background:#0e7490;color:#fff;border:0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px">Entrar</button>
-        <div id="login-msg" style="text-align:center;font-size:13px;color:#dc2626;min-height:18px"></div>
-      </form>
-    </div>`;
-  document.body.appendChild(overlay);
+function blocoUsuarioHTML() {
+  if (!_perfilSb) return '';
+  return `<div class="p-3 border-t border-slate-200 flex items-center gap-2">
+    <div class="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0" aria-hidden="true">${esc((_perfilSb.nome || '?').trim().charAt(0).toUpperCase())}</div>
+    <div class="min-w-0 flex-1"><div class="text-sm font-semibold truncate">${esc(_perfilSb.nome || _perfilSb.login || '')}</div><div class="text-xs text-slate-500 truncate">${esc(_perfilSb.perfil || '')}</div></div>
+    <button onclick="sairSupabase()" class="tt px-3 rounded-lg border border-slate-300 text-sm font-medium text-red-600 hover:bg-red-50">Sair</button></div>`;
+}
 
-  const form = document.getElementById('login-form');
-  form.onsubmit = async (ev) => {
+async function sairSupabase() {
+  try { await window.sb?.logout(); } catch (e) { console.warn('[SEGESP-GM] Erro ao sair:', e && e.message); }
+  location.reload();
+}
+
+function mostrarTelaLogin(erro) {
+  document.getElementById('login-tela')?.remove();
+  let emailSalvo = '';
+  try { emailSalvo = localStorage.getItem(LEMBRAR_EMAIL_KEY) || ''; } catch (e) { /* sem armazenamento */ }
+  const tela = document.createElement('div');
+  tela.id = 'login-tela';
+  tela.className = 'login-tela';
+  tela.setAttribute('role', 'dialog');
+  tela.setAttribute('aria-modal', 'true');
+  tela.setAttribute('aria-labelledby', 'login-titulo');
+  tela.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-topo">
+        <img src="img/brasao.png" alt="Brasão da Guarda Municipal de Pinhais" class="login-brasao" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
+        <div class="login-escudo" aria-hidden="true" hidden>🛡️</div>
+        <h1 id="login-titulo">SEGESP-GM</h1>
+        <p>Guarda Municipal de Pinhais</p>
+      </div>
+      <form id="login-form" class="login-card" novalidate>
+        <h2>Entrar</h2>
+        <div id="login-msg" class="login-erro" role="alert" ${erro ? '' : 'hidden'}>${esc(erro || '')}</div>
+        <label for="login-email">E-mail</label>
+        <input id="login-email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" required value="${esc(emailSalvo)}">
+        <label for="login-senha">Senha</label>
+        <div class="login-senha">
+          <input id="login-senha" type="password" autocomplete="current-password" required>
+          <button type="button" id="login-ver" aria-label="Mostrar senha" aria-pressed="false">👁️</button>
+        </div>
+        <label class="login-lembrar"><input id="login-lembrar" type="checkbox" ${emailSalvo ? 'checked' : ''}> Lembrar meu e-mail</label>
+        <button type="submit" id="login-btn" class="login-btn"><span class="login-spin" aria-hidden="true" hidden></span><span id="login-btn-txt">Entrar</span></button>
+      </form>
+      <div class="login-rodape">
+        <p>Esqueceu a senha? Procure a Coordenação Administrativa</p>
+        <p class="login-versao">Versão ${esc(VERSAO_APP)}</p>
+      </div>
+    </div>`;
+  document.body.appendChild(tela);
+  document.documentElement.style.overflow = 'hidden';
+
+  const el = id => document.getElementById(id);
+  const mostrarErro = txt => { const m = el('login-msg'); m.textContent = txt; m.hidden = !txt; };
+  const carregando = sim => {
+    el('login-btn').disabled = sim;
+    tela.querySelector('.login-spin').hidden = !sim;
+    el('login-btn-txt').textContent = sim ? 'Entrando…' : 'Entrar';
+  };
+
+  el('login-ver').onclick = () => {
+    const inp = el('login-senha'), ver = inp.type === 'password';
+    inp.type = ver ? 'text' : 'password';
+    el('login-ver').textContent = ver ? '🙈' : '👁️';
+    el('login-ver').setAttribute('aria-label', ver ? 'Ocultar senha' : 'Mostrar senha');
+    el('login-ver').setAttribute('aria-pressed', String(ver));
+    inp.focus();
+  };
+
+  el('login-form').onsubmit = async ev => {
     ev.preventDefault();
-    const email = document.getElementById('login-email').value.trim().toLowerCase();
-    const senha = document.getElementById('login-senha').value;
-    const btn = document.getElementById('login-btn');
-    const msg = document.getElementById('login-msg');
-    btn.disabled = true;
-    btn.textContent = 'Entrando...';
-    msg.textContent = '';
+    const email = el('login-email').value.trim().toLowerCase();
+    const senha = el('login-senha').value;
+    if (!email || !senha) { mostrarErro('Informe o e-mail e a senha.'); return; }
+    if (!navigator.onLine) { mostrarErro(MSG_SEM_INTERNET); return; }
+    if (!window.sb) { mostrarErro(MSG_SEM_SERVIDOR); return; }
+    mostrarErro('');
+    carregando(true);
     try {
-      const { error } = await window.sb.supa.auth.signInWithPassword({ email, password: senha });
-      if (error) throw new Error(error.message);
-      msg.style.color = '#16a34a';
-      msg.textContent = 'Login OK — recarregando...';
-      setTimeout(() => location.reload(), 500);
+      await window.sb.login(email, senha);
+      const r = await carregarPerfilSb();
+      if (!r.ok) {
+        try { await window.sb.logout(); } catch (e) {}
+        carregando(false); mostrarErro(r.msg); return;
+      }
+      try {
+        if (el('login-lembrar').checked) localStorage.setItem(LEMBRAR_EMAIL_KEY, email);
+        else localStorage.removeItem(LEMBRAR_EMAIL_KEY);
+      } catch (e) { /* sem armazenamento */ }
+      el('login-btn-txt').textContent = 'Abrindo…';
+      location.reload();
     } catch (e) {
-      msg.style.color = '#dc2626';
-      msg.textContent = e.message === 'Invalid login credentials' ? 'E-mail ou senha inválidos' : e.message;
-      btn.disabled = false;
-      btn.textContent = 'Entrar';
+      carregando(false);
+      mostrarErro(traduzErroLogin(e));
     }
   };
 
-  setTimeout(() => document.getElementById('login-email')?.focus(), 100);
+  setTimeout(() => (emailSalvo ? el('login-senha') : el('login-email'))?.focus(), 100);
 }
 
-// Inicia após 300ms (para o supabase.js terminar de carregar)
 iniciarLoginSupabase();
+
+/* ============================================================
+   PWA: service worker (cache só dos arquivos do próprio site)
+   ============================================================ */
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('[SEGESP-GM] Service worker não registrado:', e && e.message));
+  });
+}
 
 </script>
 </body>
