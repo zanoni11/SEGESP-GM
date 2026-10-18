@@ -29,3 +29,8 @@ Push na branch `main` → Netlify publica automaticamente.
 ## Repositório
 
 github.com/seu-usuario/segesp-gm
+
+## Escala Especial de fim de ano
+
+Veja `docs/ESCALA_ESPECIAL.md` (regras, fluxo, modo de teste local e pontos a confirmar) e `tests/README.md` (como rodar os testes).
+Para testar sem Supabase: abra localmente com `?modo=teste` (ex.: `python3 -m http.server 8000` → `http://localhost:8000/index.html?modo=teste`).
