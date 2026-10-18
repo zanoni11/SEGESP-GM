@@ -39,12 +39,13 @@ async function sbUsuarioAtual() {
   return user;
 }
 
+// Linha do usuário logado na tabela usuarios (null se não existir). Erros de rede/servidor são lançados.
 async function sbPerfilAtual() {
   const user = await sbUsuarioAtual();
   if (!user) return null;
-  const { data, error } = await supa.from('usuarios').select('*').eq('id', user.id).single();
-  if (error) { console.warn('Erro ao buscar perfil:', error); return null; }
-  return data;
+  const { data, error, status } = await supa.from('usuarios').select('*').eq('id', user.id).maybeSingle();
+  if (error) throw erroSb('Erro ao buscar perfil', error, status);
+  return data || null;
 }
 
 async function sbLogin(email, senha) {
@@ -61,15 +62,39 @@ async function sbLogout() {
 }
 
 /* ============================================================
+   ERROS
+   ============================================================ */
+
+// Erro com o código do Postgres/PostgREST (code) e o status HTTP, para o app decidir o que fazer
+// (permissão negada, sem rede, dado recusado pelo banco...).
+function erroSb(prefixo, error, status) {
+  const e = new Error(`${prefixo}: ${error.message}`);
+  e.code = error.code || '';
+  e.status = status || 0;
+  e.detalhe = error.details || '';
+  return e;
+}
+
+/* ============================================================
    LEITURA
    ============================================================ */
 
-async function sbLer(tabela, ordem) {
-  let q = supa.from(tabela).select('*');
-  if (ordem) q = q.order(ordem);
-  const { data, error } = await q;
-  if (error) throw new Error(`Erro ao ler ${tabela}: ${error.message}`);
-  return data || [];
+// Lê a tabela inteira em páginas de 1000 (limite do Supabase por consulta).
+// opcoes: { desc: true } ordena do maior para o menor; { limite: N } para ao juntar N linhas.
+async function sbLer(tabela, ordem, opcoes = {}) {
+  const passo = 1000, limite = opcoes.limite || Infinity, tudo = [];
+  let de = 0;
+  while (tudo.length < limite) {
+    const n = Math.min(passo, limite - tudo.length);
+    let q = supa.from(tabela).select('*').order(ordem || 'id', { ascending: !opcoes.desc });
+    if (ordem && ordem !== 'id') q = q.order('id');   // desempate estável entre as páginas
+    const { data, error, status } = await q.range(de, de + n - 1);
+    if (error) throw erroSb(`Erro ao ler ${tabela}`, error, status);
+    tudo.push(...(data || []));
+    if (!data || data.length < n) break;
+    de += n;
+  }
+  return tudo;
 }
 
 /* ============================================================
@@ -78,19 +103,52 @@ async function sbLer(tabela, ordem) {
 
 async function sbUpsert(tabela, registros, conflito) {
   const lista = Array.isArray(registros) ? registros : [registros];
-  if (!lista.length) return;
-  const { error } = await supa.from(tabela).upsert(lista, { onConflict: conflito || 'id' });
-  if (error) throw new Error(`Erro ao salvar em ${tabela}: ${error.message}`);
+  for (let i = 0; i < lista.length; i += 500) {
+    const { error, status } = await supa.from(tabela).upsert(lista.slice(i, i + 500), { onConflict: conflito || 'id' });
+    if (error) throw erroSb(`Erro ao salvar em ${tabela}`, error, status);
+  }
+}
+
+// Só insere o que ainda não existe (ignora ids repetidos). Usado na auditoria, que é só de inclusão.
+async function sbInserirNovos(tabela, registros) {
+  const lista = Array.isArray(registros) ? registros : [registros];
+  for (let i = 0; i < lista.length; i += 500) {
+    const { error, status } = await supa.from(tabela).upsert(lista.slice(i, i + 500), { onConflict: 'id', ignoreDuplicates: true });
+    if (error) throw erroSb(`Erro ao salvar em ${tabela}`, error, status);
+  }
 }
 
 async function sbDeletar(tabela, id) {
-  const { error } = await supa.from(tabela).delete().eq('id', id);
-  if (error) throw new Error(`Erro ao excluir de ${tabela}: ${error.message}`);
+  const { error, status } = await supa.from(tabela).delete().eq('id', id);
+  if (error) throw erroSb(`Erro ao excluir de ${tabela}`, error, status);
+}
+
+// Exclui vários ids e devolve os que de fato foram removidos. Com RLS, uma exclusão negada não dá erro:
+// simplesmente não remove nada — por isso o retorno importa.
+async function sbDeletarVarios(tabela, ids) {
+  const removidos = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error, status } = await supa.from(tabela).delete().in('id', ids.slice(i, i + 100)).select('id');
+    if (error) throw erroSb(`Erro ao excluir de ${tabela}`, error, status);
+    (data || []).forEach(r => removidos.push(r.id));
+  }
+  return removidos;
+}
+
+// Dos ids informados, devolve os que ainda existem na tabela.
+async function sbExistentes(tabela, ids) {
+  const achados = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error, status } = await supa.from(tabela).select('id').in('id', ids.slice(i, i + 100));
+    if (error) throw erroSb(`Erro ao ler ${tabela}`, error, status);
+    (data || []).forEach(r => achados.push(r.id));
+  }
+  return achados;
 }
 
 async function sbDeletarPor(tabela, coluna, valor) {
-  const { error } = await supa.from(tabela).delete().eq(coluna, valor);
-  if (error) throw new Error(`Erro ao excluir de ${tabela}: ${error.message}`);
+  const { error, status } = await supa.from(tabela).delete().eq(coluna, valor);
+  if (error) throw erroSb(`Erro ao excluir de ${tabela}`, error, status);
 }
 
 /* ============================================================
@@ -146,7 +204,10 @@ window.sb = {
   logout: sbLogout,
   ler: sbLer,
   upsert: sbUpsert,
+  inserirNovos: sbInserirNovos,
   deletar: sbDeletar,
+  deletarVarios: sbDeletarVarios,
+  existentes: sbExistentes,
   deletarPor: sbDeletarPor,
   lerConfig: sbLerConfig,
   salvarConfig: sbSalvarConfig,

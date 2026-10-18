@@ -1,30 +1,39 @@
 # Backup e Recuperação — SEGESP-GM
 
-Guia de backup e recuperação de dados do sistema.
+## 1. Onde ficam os dados
+
+Os dados ficam no **Supabase** (banco PostgreSQL), compartilhados por todos os usuários.
+O navegador guarda apenas uma **cópia** (cache) do último estado, para abrir mais rápido; ela
+é apagada ao sair do sistema e **não** serve como backup.
+
+O app não faz mais backup automático no navegador.
 
 ---
 
-## 1. Backup automático (no app)
+## 2. Backup do banco
 
-O app tem **backup automático** do `localStorage` a cada 30 minutos (nas versões que já têm as melhorias aplicadas).
-
-**Para verificar:**
-- Abra o app → Configurações → **Backup**.
-- Deve mostrar: "Último backup automático: há X horas/dias".
-
-**Para restaurar:**
-- Configurações → Backup → **Restaurar backup automático**.
-
-⚠️ **Limitação:** o backup automático fica **no mesmo navegador**. Se o navegador for limpo, o backup vai junto.
+No painel do Supabase: **Database → Backups** (diários, conforme o plano contratado).
+Para uma cópia extra, exporte as tabelas em **Table Editor → Export** ou use `pg_dump`.
 
 ---
 
-## 2. Backup manual (JSON)
+## 3. Backup manual (JSON)
 
 **Recomendado antes de qualquer alteração importante.**
 
-### Exportar
+- **Exportar:** Configurações → **Dados e sincronização → Exportar JSON** (copie o conteúdo para um arquivo).
+- **Importar:** Configurações → **Importar JSON**. Atenção: isso **substitui os dados do servidor para
+  todos os usuários**. Usuários e auditoria não são alterados.
 
-1. Abra o app → Configurações → **Backup**.
-2. Clique em **Exportar JSON**.
-3. Copie o conteúdo e salve num arquivo:
+O arquivo exportado tem dados pessoais: guarde-o em local seguro e **não o coloque no repositório**.
+
+---
+
+## 4. Se o app mostrar "Erro ao salvar"
+
+O indicador no topo mostra *Salvo*, *Salvando…* ou *Erro ao salvar*. Em caso de erro de conexão, as
+alterações ficam no aparelho e são reenviadas sozinhas quando a internet voltar (ou toque no indicador).
+Se o aviso for "Seu perfil não tem permissão para esta alteração", a alteração é desfeita: peça ao
+ADMINISTRADOR para ajustar o perfil.
+
+Para descartar o que está na tela e ler de novo do servidor: Configurações → **Recarregar dados do servidor**.

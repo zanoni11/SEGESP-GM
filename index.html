@@ -88,6 +88,21 @@
   @media (min-width: 768px) { .drawer, .drawer-bg { display: none; } }
   @media (prefers-reduced-motion: reduce) { .drawer, .drawer:not(.open), .drawer-bg { transition: none; } }
 
+  /* Indicador de sincronização (salvo / salvando / erro) */
+  .sync-ind { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1; font-weight: 600; padding: 0 8px; min-height: 32px;
+    border-radius: 999px; border: 0; background: transparent; cursor: pointer; white-space: nowrap; }
+  .sync-ok { color: #047857; } .sync-wait { color: #64748b; } .sync-err { color: #b91c1c; background: #fef2f2; }
+  .sync-spin { width: 10px; height: 10px; border: 2px solid #cbd5e1; border-top-color: #0e7490; border-radius: 50%; animation: login-gira .8s linear infinite; }
+  /* Carregamento dos dados depois do login */
+  .carregando-tela { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; background: #f8fafc; padding: 24px; }
+  .carregando-tela[hidden] { display: none; }
+  .carregando-caixa { text-align: center; color: #334155; max-width: 320px; }
+  .carregando-caixa p { margin: 10px 0 0; font-size: 15px; }
+  .carregando-spin { display: block; width: 34px; height: 34px; margin: 0 auto; border: 3px solid rgba(14,116,144,.25); border-top-color: #0e7490; border-radius: 50%; animation: login-gira .8s linear infinite; }
+  .carregando-tela.com-erro .carregando-spin { display: none; }
+  .carregando-acoes { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+  body.app-carregando #main { pointer-events: none; opacity: .75; }
+
   /* Tela de login (CSS próprio: funciona mesmo se o Tailwind não carregar) */
   .login-tela { position: fixed; inset: 0; z-index: 9999; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex;
     background: linear-gradient(160deg, #0e7490 0%, #155e75 55%, #164e63 100%); color: #fff;
@@ -144,6 +159,10 @@
 </head>
 <body class="min-h-screen">
 
+<div id="carregando" class="carregando-tela no-print" hidden role="status" aria-live="polite">
+  <div class="carregando-caixa"><span class="carregando-spin" aria-hidden="true"></span><p id="carregando-msg">Carregando dados…</p><div id="carregando-acoes" class="carregando-acoes"></div></div>
+</div>
+
 <div id="toasts" class="fixed right-3 z-[100] space-y-2 no-print" style="top: calc(env(safe-area-inset-top, 0px) + 12px)"></div>
 
 <div id="overlay" class="overlay no-print" onclick="closeModal()"></div>
@@ -160,6 +179,7 @@
   <div class="p-4 border-b border-slate-200">
     <h1 class="text-xl font-bold text-primary">Escalas GM</h1>
     <p id="side-inst" class="text-xs text-slate-500 truncate"></p>
+    <button data-sync onclick="syncClique()" class="sync-ind sync-wait mt-1 -ml-2" aria-live="polite"></button>
     <button onclick="abrirBusca()" class="tt mt-2 w-full text-left text-xs text-slate-500 hover:text-primary flex items-center gap-1.5"><span>🔍</span> Buscar <span class="ml-auto text-[10px] opacity-60">Ctrl+K</span></button>
   </div>
   <nav id="side-nav" class="flex-1 p-2 space-y-1 overflow-y-auto" aria-label="Telas"></nav>
@@ -180,6 +200,7 @@
   <header class="md:hidden bg-white border-b border-slate-200 px-2 py-1.5 flex items-center gap-1 sticky z-30 no-print" style="top:0">
     <button id="btn-menu" onclick="abrirDrawer()" aria-label="Abrir menu" aria-controls="drawer" aria-expanded="false" class="tt text-primary text-2xl leading-none">☰</button>
     <div class="min-w-0 flex-1"><h1 class="text-base font-bold text-primary leading-tight">Escalas GM</h1><div id="head-title" class="text-xs text-slate-500 truncate"></div></div>
+    <button data-sync onclick="syncClique()" class="sync-ind sync-wait" aria-live="polite"></button>
     <button onclick="abrirBusca()" aria-label="Buscar" class="tt text-primary text-xl">🔍</button>
   </header>
   <main id="main" class="p-3 md:p-6" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.5rem)"></main>
@@ -192,81 +213,14 @@
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
 const VERSAO_APP = '2026.10.18';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+// Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
 const BACKUP_META_KEY = 'escalasGM.pinhais.backup.meta';
-const BACKUP_INTERVALO_MS = 30 * 60 * 1000;
-const BACKUP_MAX_IDADE_DIAS = 7;
-const SALT_KEY = 'escalasGM.salt';
-const SENHA_MIN = 6;
 const UNDO_TTL_MS = 10000;
 const SESSAO_TIMEOUT_MS = 30 * 60 * 1000;
 const DESCANSO_MIN = 12; // horas de descanso mínimo antes de uma hora extra
 const INICIAL = '0000-01-01';
-// Base real (planilha ESCALA IPM SUPGM, setembro/2026): usada na 1ª abertura e em "Resetar dados"
-const DADOS_REAIS = {"instituicao": "Guarda Municipal de Pinhais", "ciclos": [{"id": "c1", "nome": "12x24x12x72", "sequencia": ["D", "N", "F", "F", "F"], "horarios": {"D": {"agente": ["07:00", "19:00"], "supervisor": ["06:00", "18:00"]}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["18:00", "06:00"]}}, "folgaNosFeriados": false}, {"id": "c4", "nome": "12x12x12x84 (07h–19h)", "sequencia": ["D", "D", "F", "F", "F"], "horarios": {"D": {"agente": ["07:00", "19:00"], "supervisor": ["07:00", "19:00"], "pausaMin": 0}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": false}, {"id": "c5", "nome": "ROMU 12x12x12x84 (14h–02h)", "sequencia": ["D", "D", "F", "F", "F"], "horarios": {"D": {"agente": ["14:00", "02:00"], "supervisor": ["14:00", "02:00"], "pausaMin": 0}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": false}, {"id": "c6", "nome": "12x24x12x72 Almoxarifado (06h30–18h30)", "sequencia": ["D", "N", "F", "F", "F"], "horarios": {"D": {"agente": ["06:30", "18:30"], "supervisor": ["06:30", "18:30"], "pausaMin": 0}, "N": {"agente": ["18:30", "06:30"], "supervisor": ["18:30", "06:30"], "pausaMin": 0}}, "folgaNosFeriados": false}, {"id": "c7", "nome": "12x12x12x60 (07h–19h)", "sequencia": ["D", "D", "F", "F"], "horarios": {"D": {"agente": ["07:00", "19:00"], "supervisor": ["07:00", "19:00"], "pausaMin": 0}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": false}, {"id": "c8", "nome": "12x12x12x60 Noturno (19h–07h)", "sequencia": ["N", "N", "F", "F"], "horarios": {"D": {"agente": ["07:00", "19:00"], "supervisor": ["07:00", "19:00"], "pausaMin": 0}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": false}, {"id": "c9", "nome": "12x12x12x84 Noturno (19h–07h)", "sequencia": ["N", "N", "F", "F", "F"], "horarios": {"D": {"agente": ["07:00", "19:00"], "supervisor": ["07:00", "19:00"], "pausaMin": 0}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": false}, {"id": "c10", "nome": "10x14x10x86 (08h–18h)", "sequencia": ["D", "D", "F", "F", "F"], "horarios": {"D": {"agente": ["08:00", "18:00"], "supervisor": ["08:00", "18:00"], "pausaMin": 0}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": false}, {"id": "c11", "nome": "Expediente 07h–16h (pausa 1h)", "sequencia": ["D", "D", "D", "D", "D", "F", "F"], "horarios": {"D": {"agente": ["07:00", "16:00"], "supervisor": ["07:00", "16:00"], "pausaMin": 60}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": true}, {"id": "c12", "nome": "Expediente 08h–17h (pausa 1h)", "sequencia": ["D", "D", "D", "D", "D", "F", "F"], "horarios": {"D": {"agente": ["08:00", "17:00"], "supervisor": ["08:00", "17:00"], "pausaMin": 60}, "N": {"agente": ["19:00", "07:00"], "supervisor": ["19:00", "07:00"], "pausaMin": 0}}, "folgaNosFeriados": true}], "funcoes": [{"id": "agente", "nome": "Agente", "podeSupervisionar": false, "fixa": true}, {"id": "supervisor", "nome": "Supervisor", "podeSupervisionar": true, "fixa": true}, {"id": "superintendente", "nome": "Superintendente", "podeSupervisionar": true, "fixa": false}, {"id": "coordenador", "nome": "Coordenador", "podeSupervisionar": true, "fixa": false}, {"id": "chefe_secao", "nome": "Chefe de Seção", "podeSupervisionar": true, "fixa": false}], "equipes": [{"id": "e1", "nome": "ALFA", "cicloId": "c1", "grupo": "Operacional", "exigeSupervisor": true, "efetivoMinimo": 4, "chefia": ""}, {"id": "e2", "nome": "BRAVO", "cicloId": "c1", "grupo": "Operacional", "exigeSupervisor": true, "efetivoMinimo": 4, "chefia": ""}, {"id": "e3", "nome": "CHARLIE", "cicloId": "c1", "grupo": "Operacional", "exigeSupervisor": true, "efetivoMinimo": 4, "chefia": ""}, {"id": "e4", "nome": "DELTA", "cicloId": "c1", "grupo": "Operacional", "exigeSupervisor": true, "efetivoMinimo": 4, "chefia": ""}, {"id": "e5", "nome": "ECO", "cicloId": "c1", "grupo": "Operacional", "exigeSupervisor": true, "efetivoMinimo": 4, "chefia": ""}, {"id": "e6", "nome": "ROMU ALFA", "cicloId": "c5", "grupo": "ROMU", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "IVAN DE MEIRA (SUOPE)"}, {"id": "e7", "nome": "ROMU BRAVO", "cicloId": "c5", "grupo": "ROMU", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "IVAN DE MEIRA (SUOPE)"}, {"id": "e8", "nome": "ROMU CHARLIE", "cicloId": "c5", "grupo": "ROMU", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "IVAN DE MEIRA (SUOPE)"}, {"id": "e10", "nome": "PPC ALFA", "cicloId": "c4", "grupo": "PPC", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "VANESSA MARIA WIEZBICKI (SUEPE I)"}, {"id": "e9", "nome": "PPC BRAVO", "cicloId": "c4", "grupo": "PPC", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "ANDERSON LUIS DIAS DA MATA (SUEPE III)"}, {"id": "e11", "nome": "PPC CHARLIE", "cicloId": "c4", "grupo": "PPC", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "VANESSA ARRUDA ASSUNÇÃO (SUEPE IV)"}, {"id": "e12", "nome": "PPC DELTA", "cicloId": "c4", "grupo": "PPC", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "VICTOR HALUCH JUNIOR (SUEPE V)"}, {"id": "e13", "nome": "ALMOXARIFADO ALFA", "cicloId": "c6", "grupo": "Almoxarifado", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "ARI ANTONIO STERMER (COALM)"}, {"id": "e14", "nome": "ALMOXARIFADO BRAVO", "cicloId": "c6", "grupo": "Almoxarifado", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "ARI ANTONIO STERMER (COALM)"}, {"id": "e15", "nome": "ALMOXARIFADO CHARLIE", "cicloId": "c6", "grupo": "Almoxarifado", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "ARI ANTONIO STERMER (COALM)"}, {"id": "e16", "nome": "ALMOXARIFADO DELTA", "cicloId": "c6", "grupo": "Almoxarifado", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "ARI ANTONIO STERMER (COALM)"}, {"id": "e17", "nome": "ALMOXARIFADO ECO", "cicloId": "c6", "grupo": "Almoxarifado", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "ARI ANTONIO STERMER (COALM)"}, {"id": "e18", "nome": "COMON ALFA", "cicloId": "c1", "grupo": "COMON", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "EVELYN HELENA DA SILVA (COMON)", "vinculo": "ALFA"}, {"id": "e19", "nome": "COMON BRAVO", "cicloId": "c4", "grupo": "COMON", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "EVELYN HELENA DA SILVA (COMON)", "vinculo": "CHARLIE"}, {"id": "e20", "nome": "COMON CHARLIE", "cicloId": "c9", "grupo": "COMON", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "EVELYN HELENA DA SILVA (COMON)", "vinculo": "BRAVO"}, {"id": "e21", "nome": "COMON DELTA", "cicloId": "c4", "grupo": "COMON", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "EVELYN HELENA DA SILVA (COMON)", "vinculo": "ECO"}, {"id": "e22", "nome": "COMON ECO", "cicloId": "c9", "grupo": "COMON", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "EVELYN HELENA DA SILVA (COMON)", "vinculo": "DELTA"}, {"id": "e23", "nome": "DEFESA CIVIL ALFA", "cicloId": "c7", "grupo": "Defesa Civil", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "NEWTON LEDRA (SEADC)"}, {"id": "e24", "nome": "DEFESA CIVIL BRAVO", "cicloId": "c7", "grupo": "Defesa Civil", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "NEWTON LEDRA (SEADC)"}, {"id": "e25", "nome": "DEFESA CIVIL CHARLIE", "cicloId": "c7", "grupo": "Defesa Civil", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "NEWTON LEDRA (SEADC)"}, {"id": "e26", "nome": "VIGIAS ALFA", "cicloId": "c8", "grupo": "Vigias", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "JOEL BERNARDO DA SILVA (SEVIP)"}, {"id": "e27", "nome": "VIGIAS BRAVO", "cicloId": "c8", "grupo": "Vigias", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "JOEL BERNARDO DA SILVA (SEVIP)"}, {"id": "e28", "nome": "GTAM A", "cicloId": "c10", "grupo": "GTAM", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "MILTO DE MELO JUNIOR (COINT)"}, {"id": "e29", "nome": "GTAM B", "cicloId": "c10", "grupo": "GTAM", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "MILTO DE MELO JUNIOR (COINT)"}, {"id": "e30", "nome": "GTAM C", "cicloId": "c10", "grupo": "GTAM", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "MILTO DE MELO JUNIOR (COINT)"}, {"id": "e31", "nome": "GTAM D", "cicloId": "c10", "grupo": "GTAM", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "MILTO DE MELO JUNIOR (COINT)"}, {"id": "e32", "nome": "GTAM E", "cicloId": "c10", "grupo": "GTAM", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "MILTO DE MELO JUNIOR (COINT)"}, {"id": "e33", "nome": "PATRULHA ESCOLAR", "cicloId": "c11", "grupo": "Patrulhas", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "MILTO DE MELO JUNIOR (COINT)"}, {"id": "e34", "nome": "PATRULHA MARIA DA PENHA", "cicloId": "c12", "grupo": "Patrulhas", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "MILTO DE MELO JUNIOR (COINT)"}, {"id": "e35", "nome": "ADMINISTRATIVO", "cicloId": "c12", "grupo": "Administrativo", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": ""}, {"id": "e36", "nome": "DEFESA CIVIL 08H–17H", "cicloId": "c12", "grupo": "Defesa Civil", "exigeSupervisor": false, "efetivoMinimo": 0, "chefia": "", "vinculo": ""}], "guardas": [{"id": "g1", "nomeCompleto": "ANDERSON LUIS DIAS DA MATA", "nomeGuerra": "DA MATA", "matricula": "1175300", "funcao": "supervisor", "equipeId": "e1", "nomeEdital": "DA MATA"}, {"id": "g2", "nomeCompleto": "EDI DE ABREU DA CRUZ", "nomeGuerra": "CRUZ", "matricula": "1195743", "funcao": "agente", "equipeId": "e1", "nomeEdital": "CRUZ"}, {"id": "g3", "nomeCompleto": "FERNANDA COSTA", "nomeGuerra": "COSTA", "matricula": "2596202", "funcao": "agente", "equipeId": "e1", "nomeEdital": "COSTA"}, {"id": "g4", "nomeCompleto": "HEVERTON PAULO PAIÉ", "nomeGuerra": "PAIE", "matricula": "1951203", "funcao": "agente", "equipeId": "e1", "nomeEdital": "PAIE"}, {"id": "g5", "nomeCompleto": "PETERSON MOREIRA DE OLIVEIRA", "nomeGuerra": "MOREIRA", "matricula": "6389678", "funcao": "agente", "equipeId": "e1", "nomeEdital": "MOREIRA"}, {"id": "g6", "nomeCompleto": "VANESSA MARIA WIEZBICKI", "nomeGuerra": "WIEZBICKI", "matricula": "1194208", "funcao": "supervisor", "equipeId": "e2", "nomeEdital": "WIEZBICKI"}, {"id": "g7", "nomeCompleto": "ALEXANDER RIBEIRO", "nomeGuerra": "ALEXANDER", "matricula": "6461034", "funcao": "agente", "equipeId": "e2", "nomeEdital": "ALEXANDER"}, {"id": "g8", "nomeCompleto": "ANTONIO SERGIO ALVES DE LIMA", "nomeGuerra": "SERGIO LIMA", "matricula": "821918", "funcao": "agente", "equipeId": "e2", "nomeEdital": "SERGIO LIMA"}, {"id": "g9", "nomeCompleto": "NEIDIVALDO SALUSTIANO DA SILVA", "nomeGuerra": "SALUSTIANO", "matricula": "1194747", "funcao": "agente", "equipeId": "e2", "nomeEdital": "SALUSTIANO"}, {"id": "g10", "nomeCompleto": "RODRIGO SANTOS DA SILVA", "nomeGuerra": "SILVA", "matricula": "2675137", "funcao": "agente", "equipeId": "e2", "nomeEdital": "SILVA"}, {"id": "g11", "nomeCompleto": "VANESSA ARRUDA ASSUNÇÃO DE PAULA", "nomeGuerra": "ASSUNÇÃO", "matricula": "1195387", "funcao": "supervisor", "equipeId": "e3", "nomeEdital": "ASSUNÇÃO"}, {"id": "g12", "nomeCompleto": "MARCELO RAMLOW FERNANDES", "nomeGuerra": "FERNANDES", "matricula": "706884", "funcao": "agente", "equipeId": "e3", "nomeEdital": "FERNANDES"}, {"id": "g13", "nomeCompleto": "ROSARIA PFLANZER", "nomeGuerra": "PFLANZER", "matricula": "6461158", "funcao": "agente", "equipeId": "e3", "nomeEdital": "PFLANZER"}, {"id": "g14", "nomeCompleto": "REGINALDO MANFRE", "nomeGuerra": "MANFRE", "matricula": "1829467", "funcao": "agente", "equipeId": "e3", "nomeEdital": "MANFRE"}, {"id": "g15", "nomeCompleto": "GUSTAVO MAREZIUZEK", "nomeGuerra": "MAREZIUZEK", "matricula": "1387634", "funcao": "agente", "equipeId": "e3", "nomeEdital": "MAREZIUZEK"}, {"id": "g16", "nomeCompleto": "VITOR HALUCH JUNIOR", "nomeGuerra": "HALUCH", "matricula": "1194720", "funcao": "supervisor", "equipeId": "e4", "nomeEdital": "HALUCH"}, {"id": "g17", "nomeCompleto": "BRUNO KOVALHCZUK RIBEIRO", "nomeGuerra": "KOVALHCZUK", "matricula": "9119264", "funcao": "agente", "equipeId": "e4", "nomeEdital": "KOVALHCZUK"}, {"id": "g18", "nomeCompleto": "IGOR AGUIAR", "nomeGuerra": "AGUIAR", "matricula": "5942047", "funcao": "agente", "equipeId": "e4", "nomeEdital": "AGUIAR"}, {"id": "g19", "nomeCompleto": "RICARDO WINICIUS MIGUEL DA SILVA RESENDE", "nomeGuerra": "RESENDE", "matricula": "6383050", "funcao": "agente", "equipeId": "e4", "nomeEdital": "RESENDE"}, {"id": "g20", "nomeCompleto": "JENNIFER DAIANE VIEIRA", "nomeGuerra": "VIEIRA", "matricula": "6387748", "funcao": "agente", "equipeId": "e4", "nomeEdital": "VIEIRA"}, {"id": "g21", "nomeCompleto": "DIEGO RAFAEL CORREA DA SILVA", "nomeGuerra": "RAFAEL", "matricula": "1193961", "funcao": "supervisor", "equipeId": "e5", "nomeEdital": "RAFAEL"}, {"id": "g22", "nomeCompleto": "BRUNO LUCIO", "nomeGuerra": "LUCIO", "matricula": "2279118", "funcao": "agente", "equipeId": "e5", "nomeEdital": "LUCIO"}, {"id": "g23", "nomeCompleto": "ALAN DA SILVA RAMOS", "nomeGuerra": "RAMOS", "matricula": "1196227", "funcao": "agente", "equipeId": "e5", "nomeEdital": "RAMOS"}, {"id": "g24", "nomeCompleto": "EVERSON PRESTES DE MEDEIROS", "nomeGuerra": "PRESTES", "matricula": "1386646", "funcao": "agente", "equipeId": "e5", "nomeEdital": "PRESTES"}, {"id": "g25", "nomeCompleto": "FLAVIO ROCHA", "nomeGuerra": "FLAVIO", "matricula": "1196316", "funcao": "agente", "equipeId": "e5", "nomeEdital": "FLAVIO"}, {"id": "g26", "nomeCompleto": "AMANDA DE PAULA ASSUNÇÃO", "nomeGuerra": "DE PAULA", "matricula": "1196340", "funcao": "agente", "equipeId": "e6", "nomeEdital": "DE PAULA"}, {"id": "g27", "nomeCompleto": "ÁTILA ALVES GONÇALVES", "nomeGuerra": "GONÇALVES", "matricula": "6386199", "funcao": "agente", "equipeId": "e6", "nomeEdital": "GONÇALVES"}, {"id": "g28", "nomeCompleto": "AUGUSTO CASIMIRO DOS SANTOS", "nomeGuerra": "CASIMIRO", "matricula": "6461140", "funcao": "agente", "equipeId": "e6", "nomeEdital": "CASIMIRO"}, {"id": "g29", "nomeCompleto": "FABRÍCIO DE JESUS NUNES", "nomeGuerra": "NUNES", "matricula": "1194070", "funcao": "agente", "equipeId": "e6", "nomeEdital": "NUNES"}, {"id": "g30", "nomeCompleto": "NORTON STRESSER", "nomeGuerra": "STRESSER", "matricula": "6402895", "funcao": "agente", "equipeId": "e6", "nomeEdital": "STRESSER"}, {"id": "g31", "nomeCompleto": "RONILSON BELÃO RODRIGUES", "nomeGuerra": "BELÃO", "matricula": "1388142", "funcao": "agente", "equipeId": "e6", "nomeEdital": "BELÃO"}, {"id": "g32", "nomeCompleto": "VALTER RODRIGUES LUCIANO", "nomeGuerra": "LUCIANO", "matricula": "877107", "funcao": "agente", "equipeId": "e6", "nomeEdital": "LUCIANO"}, {"id": "g33", "nomeCompleto": "IVAN DE MEIRA", "nomeGuerra": "MEIRA", "matricula": "1388703", "funcao": "supervisor", "equipeId": "e7", "nomeEdital": "MEIRA"}, {"id": "g34", "nomeCompleto": "ANDRÉ SKODOWSKI", "nomeGuerra": "SKODOWSKI", "matricula": "6461107", "funcao": "agente", "equipeId": "e7", "nomeEdital": "SKODOWSKI"}, {"id": "g35", "nomeCompleto": "EVERTON PIOVEZAN", "nomeGuerra": "PIOVEZAN", "matricula": "1389289", "funcao": "agente", "equipeId": "e7", "nomeEdital": "PIOVEZAN"}, {"id": "g36", "nomeCompleto": "RENAN YUDI TESUKA", "nomeGuerra": "TESUKA", "matricula": "2633973", "funcao": "agente", "equipeId": "e7", "nomeEdital": "TESUKA"}, {"id": "g37", "nomeCompleto": "JOSÉ ROBERTO DE SOUZA", "nomeGuerra": "SOUZA", "matricula": "1193341", "funcao": "agente", "equipeId": "e8", "nomeEdital": "SOUZA"}, {"id": "g38", "nomeCompleto": "ROBERTO BARBIERI NETO", "nomeGuerra": "BARBIERI", "matricula": "1193023", "funcao": "agente", "equipeId": "e8", "nomeEdital": "BARBIERI"}, {"id": "g39", "nomeCompleto": "WELINGTON FELIPE GODOY PACHECO", "nomeGuerra": "PACHECO", "matricula": "2639106", "funcao": "agente", "equipeId": "e8", "nomeEdital": "PACHECO"}, {"id": "g40", "nomeCompleto": "ALDAIR SILVA", "nomeGuerra": "ALDAIR", "matricula": "1195794", "funcao": "agente", "equipeId": "e8", "nomeEdital": "ALDAIR"}, {"id": "g41", "nomeCompleto": "GILSON LUIZ SAMPAIO CORDEIRO", "nomeGuerra": "SAMPAIO", "matricula": "1194143", "funcao": "agente", "equipeId": "e9", "nomeEdital": "SAMPAIO"}, {"id": "g42", "nomeCompleto": "JULIANO PASCHE", "nomeGuerra": "PASCHE", "matricula": "1094831", "funcao": "agente", "equipeId": "e9", "nomeEdital": "PASCHE"}, {"id": "g43", "nomeCompleto": "RODRIGO THADEU MAIA", "nomeGuerra": "MAIA", "matricula": "1225383", "funcao": "agente", "equipeId": "e9", "nomeEdital": "MAIA"}, {"id": "g44", "nomeCompleto": "DARIO RIBEIRO SOARES JUNIOR", "nomeGuerra": "RIBEIRO", "matricula": "1195000", "funcao": "agente", "equipeId": "e9", "nomeEdital": "RIBEIRO"}, {"id": "g45", "nomeCompleto": "MARCELO RODRIGUES DA SILVA", "nomeGuerra": "RODRIGUES", "matricula": "1247956", "funcao": "agente", "equipeId": "e9", "nomeEdital": "RODRIGUES"}, {"id": "g46", "nomeCompleto": "EDNA MARIA DOS SANTOS PRESTES", "nomeGuerra": "EDNA", "matricula": "1195255", "funcao": "agente", "equipeId": "e10", "nomeEdital": "EDNA"}, {"id": "g47", "nomeCompleto": "CLEVERSON DE OLIVEIRA LIMA", "nomeGuerra": "OLIVEIRA", "matricula": "1196294", "funcao": "agente", "equipeId": "e10", "nomeEdital": "OLIVEIRA"}, {"id": "g48", "nomeCompleto": "BRUNO BAYUK SALGADO DE SOUZA", "nomeGuerra": "SALGADO", "matricula": "1194755", "funcao": "agente", "equipeId": "e10", "nomeEdital": "SALGADO"}, {"id": "g49", "nomeCompleto": "ERALDO DA LUZ TORRES", "nomeGuerra": "TORRES", "matricula": "6629490", "funcao": "agente", "equipeId": "e10", "nomeEdital": "TORRES"}, {"id": "g50", "nomeCompleto": "DAVID GONÇALVES CORDEIRO", "nomeGuerra": "CORDEIRO", "matricula": "1388908", "funcao": "agente", "equipeId": "e10", "nomeEdital": "CORDEIRO"}, {"id": "g51", "nomeCompleto": "MAURÍCIO FERNANDO TOMCZACK", "nomeGuerra": "TOMCZACK", "matricula": "1388223", "funcao": "agente", "equipeId": "e11", "nomeEdital": "TOMCZACK"}, {"id": "g52", "nomeCompleto": "SIDINEI PEREIRA RIBEIRO", "nomeGuerra": "PEREIRA", "matricula": "1195506", "funcao": "agente", "equipeId": "e11", "nomeEdital": "PEREIRA"}, {"id": "g53", "nomeCompleto": "CRISTIANE MARA PASTERNAK", "nomeGuerra": "PASTERNAK", "matricula": "1194550", "funcao": "agente", "equipeId": "e11", "nomeEdital": "PASTERNAK"}, {"id": "g54", "nomeCompleto": "JEFERSON DE OLIVEIRA LIMA", "nomeGuerra": "JEFERSON", "matricula": "1388118", "funcao": "agente", "equipeId": "e12", "nomeEdital": "JEFERSON"}, {"id": "g55", "nomeCompleto": "RENAN FERNANDES MARTINS", "nomeGuerra": "MARTINS", "matricula": "6629504", "funcao": "agente", "equipeId": "e12", "nomeEdital": "MARTINS"}, {"id": "g56", "nomeCompleto": "ORLEI PEREIRA DOS SANTOS", "nomeGuerra": "DOS SANTOS", "matricula": "6388108", "funcao": "agente", "equipeId": "e12", "nomeEdital": "DOS SANTOS"}, {"id": "g57", "nomeCompleto": "ROBSON CAETANO DE ALMEIDA", "nomeGuerra": "CAETANO", "matricula": "1388860", "funcao": "agente", "equipeId": "e12", "nomeEdital": "CAETANO"}, {"id": "g58", "nomeCompleto": "PAULA SOUZA GRILO", "nomeGuerra": "GRILO", "matricula": "1196014", "funcao": "agente", "equipeId": "e13", "nomeEdital": "GRILO"}, {"id": "g59", "nomeCompleto": "EDER KLEMANN", "nomeGuerra": "KLEMANN", "matricula": "1387928", "funcao": "agente", "equipeId": "e14", "nomeEdital": "KLEMANN"}, {"id": "g60", "nomeCompleto": "EDER BENITES", "nomeGuerra": "BENITES", "matricula": "1196138", "funcao": "agente", "equipeId": "e15", "nomeEdital": "BENITES"}, {"id": "g61", "nomeCompleto": "GERSON TEIXEIRA COSTA", "nomeGuerra": "TEIXEIRA", "matricula": "1194038", "funcao": "agente", "equipeId": "e16", "nomeEdital": "TEIXEIRA"}, {"id": "g62", "nomeCompleto": "OSNEI JOSE DE FREITAS RODRIGUES", "nomeGuerra": "FREITAS", "matricula": "1193660", "funcao": "agente", "equipeId": "e17", "nomeEdital": "FREITAS"}, {"id": "g63", "nomeCompleto": "MARCEL LUIS DA SILVA", "nomeGuerra": "MARCEL", "matricula": "1173170", "funcao": "agente", "equipeId": "e18", "nomeEdital": "MARCEL"}, {"id": "g64", "nomeCompleto": "JOCICLEI CRISTINA KINDINGER DE OLIVEIRA", "nomeGuerra": "KINDINGER", "matricula": "1389173", "funcao": "agente", "equipeId": "e18", "nomeEdital": "KINDINGER"}, {"id": "g65", "nomeCompleto": "ERICA DA SILVA LASCOSKI DA CRUZ", "nomeGuerra": "LASCOSKI", "matricula": "1193520", "funcao": "agente", "equipeId": "e19", "nomeEdital": "LASCOSKI"}, {"id": "g66", "nomeCompleto": "RENATA CARVALHO DE CASTRO EUSTÁQUIO", "nomeGuerra": "RENATA", "matricula": "1194844", "funcao": "agente", "equipeId": "e19", "nomeEdital": "RENATA"}, {"id": "g67", "nomeCompleto": "DANILO MOREIRA ROCHA", "nomeGuerra": "DANILO", "matricula": "1194259", "funcao": "agente", "equipeId": "e20", "nomeEdital": "DANILO"}, {"id": "g68", "nomeCompleto": "JULIANA APARECIDA PORT", "nomeGuerra": "PORT", "matricula": "1195999", "funcao": "agente", "equipeId": "e20", "nomeEdital": "PORT"}, {"id": "g69", "nomeCompleto": "LARISSA MENA ROSA DE OLIVEIRA", "nomeGuerra": "MENA", "matricula": "931756", "funcao": "agente", "equipeId": "e21", "nomeEdital": "MENA"}, {"id": "g70", "nomeCompleto": "BRUNO WAESLEY PAULINO", "nomeGuerra": "PAULINO", "matricula": "1388428", "funcao": "agente", "equipeId": "e21", "nomeEdital": "PAULINO"}, {"id": "g71", "nomeCompleto": "PAULO HENRIQUE BORBA MOTA", "nomeGuerra": "MOTA", "matricula": "1832832", "funcao": "agente", "equipeId": "e22", "nomeEdital": "MOTA"}, {"id": "g72", "nomeCompleto": "FERNANDA ALVES MARTINS", "nomeGuerra": "FERNANDA", "matricula": "1195816", "funcao": "agente", "equipeId": "e22", "nomeEdital": "FERNANDA"}, {"id": "g73", "nomeCompleto": "HUGO BENITO ALMODOVAR", "nomeGuerra": "ALMODOVAR", "matricula": "3046230", "funcao": "agente", "equipeId": "e23", "nomeEdital": "ALMODOVAR"}, {"id": "g74", "nomeCompleto": "RENATO DANTAS GARCIA", "nomeGuerra": "GARCIA", "matricula": "1288660", "funcao": "agente", "equipeId": "e23", "nomeEdital": "GARCIA"}, {"id": "g75", "nomeCompleto": "ROGÉRIO NUNES CALIXTO DE GODOI", "nomeGuerra": "ROGÉRIO", "matricula": "454443", "funcao": "agente", "equipeId": "e23", "nomeEdital": "ROGÉRIO"}, {"id": "g76", "nomeCompleto": "GUSTAVO LUIZ MEHL", "nomeGuerra": "GUSTAVO", "matricula": "687995", "funcao": "agente", "equipeId": "e24", "nomeEdital": "GUSTAVO"}, {"id": "g77", "nomeCompleto": "JANAINA ERDMAN", "nomeGuerra": "JANAINA", "matricula": "707384", "funcao": "agente", "equipeId": "e24", "nomeEdital": "JANAINA"}, {"id": "g78", "nomeCompleto": "MARCOS ADOLFO LUCHTENBERG", "nomeGuerra": "LUCHTENBERG", "matricula": "6595146", "funcao": "agente", "equipeId": "e24", "nomeEdital": "LUCHTENBERG"}, {"id": "g79", "nomeCompleto": "DANIEL ERON COSTA", "nomeGuerra": "DANIEL", "matricula": "1422774", "funcao": "agente", "equipeId": "e25", "nomeEdital": "DANIEL"}, {"id": "g80", "nomeCompleto": "AMARILDO DE SOUZA ALVES", "nomeGuerra": "AMARILDO", "matricula": "706817", "funcao": "agente", "equipeId": "e26", "nomeEdital": "AMARILDO"}, {"id": "g81", "nomeCompleto": "DAVID ESQUITINI", "nomeGuerra": "ESQUITINI", "matricula": "706876", "funcao": "agente", "equipeId": "e26", "nomeEdital": "ESQUITINI"}, {"id": "g82", "nomeCompleto": "DOMINGOS ALVES DOS SANTOS", "nomeGuerra": "DOMINGOS", "matricula": "498246", "funcao": "agente", "equipeId": "e26", "nomeEdital": "DOMINGOS"}, {"id": "g83", "nomeCompleto": "OLEANDRO REGIS GAIO", "nomeGuerra": "OLEANDRO", "matricula": "7811", "funcao": "agente", "equipeId": "e26", "nomeEdital": "OLEANDRO"}, {"id": "g84", "nomeCompleto": "EDERSON PEREIRA DE SOUZA", "nomeGuerra": "EDERSON", "matricula": "8311", "funcao": "agente", "equipeId": "e27", "nomeEdital": "EDERSON"}, {"id": "g85", "nomeCompleto": "LIZABETE LOURENÇO", "nomeGuerra": "LIZABETE", "matricula": "7067879", "funcao": "agente", "equipeId": "e27", "nomeEdital": "LIZABETE"}, {"id": "g86", "nomeCompleto": "OSNY CORDEIRO", "nomeGuerra": "OSNY", "matricula": "454354", "funcao": "agente", "equipeId": "e27", "nomeEdital": "OSNY"}, {"id": "g87", "nomeCompleto": "ROBINSON FREIRE DA SILVA", "nomeGuerra": "FREIRE", "matricula": "12203", "funcao": "agente", "equipeId": "e27", "nomeEdital": "FREIRE"}, {"id": "g88", "nomeCompleto": "WILSON MENDES DA SILVA", "nomeGuerra": "MENDES", "matricula": "2382377", "funcao": "agente", "equipeId": "e28", "nomeEdital": "MENDES"}, {"id": "g89", "nomeCompleto": "JAIME DOMINGOS RIBEIRO", "nomeGuerra": "DOMINGOS", "matricula": "2452979", "funcao": "agente", "equipeId": "e28", "nomeEdital": "DOMINGOS"}, {"id": "g90", "nomeCompleto": "JHONATHAN DE ALMEIDA FRAGOSO", "nomeGuerra": "FRAGOSO", "matricula": "6450032", "funcao": "agente", "equipeId": "e29", "nomeEdital": "FRAGOSO"}, {"id": "g91", "nomeCompleto": "PAULO ROBERTO MAIA ANTUNES", "nomeGuerra": "ANTUNES", "matricula": "6382096", "funcao": "agente", "equipeId": "e30", "nomeEdital": "ANTUNES"}, {"id": "g92", "nomeCompleto": "GILSON JOSE DA SILVA FILHO", "nomeGuerra": "FILHO", "matricula": "6383513", "funcao": "agente", "equipeId": "e30", "nomeEdital": "FILHO"}, {"id": "g93", "nomeCompleto": "VAMIL DELLALIBERA DE MELLO JUNIOR", "nomeGuerra": "DELLALIBERA", "matricula": "6386857", "funcao": "agente", "equipeId": "e31", "nomeEdital": "DELLALIBERA"}, {"id": "g94", "nomeCompleto": "ROGÉRIO ALVES", "nomeGuerra": "ALVES", "matricula": "620343", "funcao": "agente", "equipeId": "e31", "nomeEdital": "ALVES"}, {"id": "g95", "nomeCompleto": "ITALO BRUNO ARAÚJO DOS SANTOS", "nomeGuerra": "ARAUJO", "matricula": "6386776", "funcao": "agente", "equipeId": "e32", "nomeEdital": "ARAUJO"}, {"id": "g96", "nomeCompleto": "MARCIA OSTROSKI DE SOUZA", "nomeGuerra": "OSTROSKI", "matricula": "1194682", "funcao": "agente", "equipeId": "e33", "nomeEdital": "OSTROSKI"}, {"id": "g97", "nomeCompleto": "UOSHINGTON FONSECA DA MOTA", "nomeGuerra": "FONSECA", "matricula": "6461174", "funcao": "agente", "equipeId": "e33", "nomeEdital": "FONSECA"}, {"id": "g98", "nomeCompleto": "LELIAN RODRIGUES PREVIATO", "nomeGuerra": "LELIAN", "matricula": "1194151", "funcao": "agente", "equipeId": "e34", "nomeEdital": "LELIAN"}, {"id": "g99", "nomeCompleto": "SERGIO LUIZ VIDA VIEIRA", "nomeGuerra": "SÉRGIO", "matricula": "1195247", "funcao": "agente", "equipeId": "e34", "nomeEdital": "SÉRGIO"}, {"id": "g100", "nomeCompleto": "CLAUDIA REGINA DA SILVA", "nomeGuerra": "CLAUDIA", "matricula": "676837", "funcao": "agente", "equipeId": "e26", "nomeEdital": "CLAUDIA"}, {"id": "g101", "nomeCompleto": "CARLOS EDUARDO DE MOURA ABRANTES", "nomeGuerra": "ABRANTES", "matricula": "1194836", "funcao": "superintendente", "equipeId": "e35", "nomeEdital": "ABRANTES"}, {"id": "g102", "nomeCompleto": "MILTO DE MELO JUNIOR", "nomeGuerra": "MILTO", "matricula": "1193759", "funcao": "coordenador", "equipeId": "e35", "nomeEdital": "MILTO"}, {"id": "g103", "nomeCompleto": "PAULA FERNANDA BARBOSA", "nomeGuerra": "BARBOSA", "matricula": "1315676", "funcao": "agente", "equipeId": "e35", "nomeEdital": "BARBOSA"}, {"id": "g104", "nomeCompleto": "EVELYN HELENA DA SILVA", "nomeGuerra": "EVELYN", "matricula": "1194640", "funcao": "coordenador", "equipeId": "e35", "nomeEdital": "EVELYN"}, {"id": "g105", "nomeCompleto": "ARI ANTONIO STERMER", "nomeGuerra": "STERMER", "matricula": "1277090", "funcao": "coordenador", "equipeId": "e35", "nomeEdital": "STERMER"}, {"id": "g106", "nomeCompleto": "LINCOLN HENRIQUE OLKUSZEWSKI DA SILVA", "nomeGuerra": "LINCOLN", "matricula": "1388967", "funcao": "coordenador", "equipeId": "e35", "nomeEdital": "LINCOLN"}, {"id": "g107", "nomeCompleto": "NEWTON LEDRA", "nomeGuerra": "NEWTON", "matricula": "693928", "funcao": "chefe_secao", "equipeId": "e36", "nomeEdital": "NEWTON"}, {"id": "g108", "nomeCompleto": "KAIQUE GUSTAVO MACHADO DA SILVA", "nomeGuerra": "MACHADO", "matricula": "1640534", "funcao": "agente", "equipeId": "e35", "nomeEdital": "MACHADO"}, {"id": "g109", "nomeCompleto": "JOHNY FERREIRA DE JESUS", "nomeGuerra": "FERREIRA", "matricula": "1388673", "funcao": "agente", "equipeId": "e35", "nomeEdital": "FERREIRA"}, {"id": "g110", "nomeCompleto": "LUCAS RAPHAEL ZANONI", "nomeGuerra": "ZANONI", "matricula": "1388711", "funcao": "coordenador", "equipeId": "e35", "nomeEdital": "ZANONI"}, {"id": "g111", "nomeCompleto": "MAICON JOSE RIBEIRO", "nomeGuerra": "MAICON", "matricula": "2599910", "funcao": "agente", "equipeId": "e35", "nomeEdital": "MAICON"}, {"id": "g112", "nomeCompleto": "JOEL BERNARDO DA SILVA", "nomeGuerra": "BERNARDO", "matricula": "1195344", "funcao": "coordenador", "equipeId": "e35", "nomeEdital": "BERNARDO"}, {"id": "g113", "nomeCompleto": "RAFAEL GUILHERME DOS SANTOS", "nomeGuerra": "GUILHERME", "matricula": "1388487", "funcao": "agente", "equipeId": "e35", "nomeEdital": "GUILHERME"}], "ancorasHist": [{"equipeId": "e1", "data": "2026-09-05", "vigencia": "0000-01-01"}, {"equipeId": "e2", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e3", "data": "2026-09-01", "vigencia": "0000-01-01"}, {"equipeId": "e4", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e5", "data": "2026-09-03", "vigencia": "0000-01-01"}, {"equipeId": "e6", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e7", "data": "2026-09-05", "vigencia": "0000-01-01"}, {"equipeId": "e8", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e9", "data": "2026-09-05", "vigencia": "0000-01-01"}, {"equipeId": "e10", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e11", "data": "2026-09-01", "vigencia": "0000-01-01"}, {"equipeId": "e12", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e13", "data": "2026-09-05", "vigencia": "0000-01-01"}, {"equipeId": "e14", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e15", "data": "2026-09-01", "vigencia": "0000-01-01"}, {"equipeId": "e16", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e17", "data": "2026-09-03", "vigencia": "0000-01-01"}, {"equipeId": "e18", "data": "2026-09-05", "vigencia": "0000-01-01"}, {"equipeId": "e19", "data": "2026-09-01", "vigencia": "0000-01-01"}, {"equipeId": "e20", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e21", "data": "2026-09-03", "vigencia": "0000-01-01"}, {"equipeId": "e22", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e23", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e24", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e25", "data": "2026-09-03", "vigencia": "0000-01-01"}, {"equipeId": "e26", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e27", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e28", "data": "2026-09-03", "vigencia": "0000-01-01"}, {"equipeId": "e29", "data": "2026-09-04", "vigencia": "0000-01-01"}, {"equipeId": "e30", "data": "2026-09-05", "vigencia": "0000-01-01"}, {"equipeId": "e31", "data": "2026-09-01", "vigencia": "0000-01-01"}, {"equipeId": "e32", "data": "2026-09-02", "vigencia": "0000-01-01"}, {"equipeId": "e33", "data": "2026-09-07", "vigencia": "0000-01-01"}, {"equipeId": "e34", "data": "2026-09-07", "vigencia": "0000-01-01"}, {"equipeId": "e35", "data": "2026-09-07", "vigencia": "0000-01-01"}, {"equipeId": "e36", "data": "2026-09-07", "vigencia": "0000-01-01"}], "horasExtras": [], "limitesExtras": {}, "feriados": [{"data": "2026-01-01", "nome": "Confraternização Universal"}, {"data": "2026-04-03", "nome": "Sexta-feira Santa"}, {"data": "2026-04-21", "nome": "Tiradentes"}, {"data": "2026-05-01", "nome": "Dia do Trabalho"}, {"data": "2026-09-07", "nome": "Independência do Brasil"}, {"data": "2026-10-12", "nome": "Nossa Senhora Aparecida"}, {"data": "2026-11-02", "nome": "Finados"}, {"data": "2026-11-15", "nome": "Proclamação da República"}, {"data": "2026-11-20", "nome": "Consciência Negra"}, {"data": "2026-12-25", "nome": "Natal"}], "_backupImport": null, "_baseRealVersao": 6, "assinatura": {"nome": "Lucas Raphael Zanoni", "cargo": "Coordenador Administrativo", "cidade": "Pinhais"}};
-// Se já existe dado salvo de uma versão anterior da base, acrescenta só o que falta (por id),
-// sem alterar nem apagar nada que o usuário tenha editado.
-
-// ----- Migração da base real para a versão 5 (nomes do edital, correção das PPC, Defesa Civil de expediente) -----
-const NOMES_EDITAL = {"anderson luis dias da mata": "DA MATA", "edi de abreu da cruz": "CRUZ", "fernanda costa": "COSTA", "heverton paulo paie": "PAIE", "peterson moreira de oliveira": "MOREIRA", "vanessa maria wiezbicki": "WIEZBICKI", "alexander ribeiro": "ALEXANDER", "antonio sergio alves de lima": "SERGIO LIMA", "neidivaldo salustiano": "SALUSTIANO", "rodrigo santos da silva": "SILVA", "vanessa arruda assuncao": "ASSUNÇÃO", "marcelo ramlow fernandes": "FERNANDES", "rosaria pflanzer": "PFLANZER", "reginaldo manfre": "MANFRE", "gustavo mareziuzek": "MAREZIUZEK", "victor haluch junior": "HALUCH", "bruno kovalhczuk ribeiro": "KOVALHCZUK", "igor aguiar": "AGUIAR", "ricardo winicius miguel da silva resende": "RESENDE", "jennifer daiane vieira": "VIEIRA", "diego rafael correa da silva": "RAFAEL", "bruno lucio": "LUCIO", "alan da silva ramos": "RAMOS", "everson prestes de medeiros": "PRESTES", "flavio rocha": "FLAVIO", "amanda de paula assuncao": "DE PAULA", "atila alves goncalves": "GONÇALVES", "augusto casimiro dos santos": "CASIMIRO", "fabricio de jesus nunes": "NUNES", "norton stresser": "STRESSER", "ronilson belao rodrigues": "BELÃO", "valter rodrigues luciano": "LUCIANO", "andre skodowski": "SKODOWSKI", "everton piovezan": "PIOVEZAN", "ivan de meira": "MEIRA", "renan yudi tesuka": "TESUKA", "jose roberto de souza": "SOUZA", "roberto barbieri neto": "BARBIERI", "welington felipe godoy pacheco": "PACHECO", "aldair silva": "ALDAIR", "edna maria dos santos": "EDNA", "cleverson de oliveira lima": "OLIVEIRA", "bruno salgado de souza": "SALGADO", "eraldo da luz torres": "TORRES", "david goncalves cordeiro": "CORDEIRO", "gilson luiz sampaio cordeiro": "SAMPAIO", "juliano pasche": "PASCHE", "rodrigo thadeu maia": "MAIA", "dario ribeiro soares junior": "RIBEIRO", "marcelo rodrigues da silva": "RODRIGUES", "mauricio fernando tomczack": "TOMCZACK", "sidinei pereira ribeiro": "PEREIRA", "cristiane mara pasternak": "PASTERNAK", "jeferson de oliveira lima": "JEFERSON", "renan fernandes martins": "MARTINS", "orlei pereira dos santos": "DOS SANTOS", "robson caetano de almeida": "CAETANO", "paula souza grilo": "GRILO", "eder klemann": "KLEMANN", "eder benites": "BENITES", "gerson teixeira costa": "TEIXEIRA", "osnei jose de freitas rodrigues": "FREITAS", "marcel luis da silva": "MARCEL", "jociclei cristina kindinger de oliveira": "KINDINGER", "erica da silva lascoski da cruz": "LASCOSKI", "renata carvalho de castro eustaquio": "RENATA", "danilo moreira rocha": "DANILO", "juliana aparecida port": "PORT", "larissa mena rosa de oliveira": "MENA", "bruno waesley paulino": "PAULINO", "paulo henrique borba mota": "MOTA", "fernanda alves martins": "FERNANDA", "hugo benito almodovar": "ALMODOVAR", "renato dantas garcia": "GARCIA", "rogerio nunes calixto de godoi": "ROGÉRIO", "gustavo luiz mehl": "GUSTAVO", "janaina erdman": "JANAINA", "marcos adolfo luchtenberg": "LUCHTENBERG", "daniel eron costa": "DANIEL", "amarildo de souza alves": "AMARILDO", "david esquitini": "ESQUITINI", "domingos alves dos santos": "DOMINGOS", "oleandro regis gaio": "OLEANDRO", "claudia regina da silva": "CLAUDIA", "ederson pereira de souza": "EDERSON", "lizabete lourenco paulino": "LIZABETE", "osny cordeiro": "OSNY", "robinson freire da silva": "FREIRE", "wilson mendes da silva": "MENDES", "jaime domingos ribeiro": "DOMINGOS", "jhonathan de almeida fragoso": "FRAGOSO", "paulo roberto maia antunes": "ANTUNES", "gilson jose da silva filho": "FILHO", "vamil dellalibera de mello junior": "DELLALIBERA", "rogerio alves": "ALVES", "italo bruno araujo dos santos": "ARAUJO", "marcia ostroski de souza": "OSTROSKI", "uoshington fonseca da mota": "FONSECA", "lelian rodrigues previato": "LELIAN", "sergio luiz vida vieira": "SÉRGIO", "maicon jose ribeiro": "MAICON", "johny ferreira de jesus": "FERREIRA", "kaique gustavo machado da silva": "MACHADO", "paula fernanda barbosa": "BARBOSA", "rafael guilherme dos santos": "GUILHERME", "newton ledra": "NEWTON", "carlos eduardo de moura abrantes": "ABRANTES", "milto de melo junior": "MILTO", "evelyn helena da silva": "EVELYN", "ari antonio stermer": "STERMER", "lincoln henrique olkuszewski da silva": "LINCOLN", "lucas raphael zanoni": "ZANONI", "joel bernardo da silva": "BERNARDO"};
-function migrarBase5(s) {
-  const eq = nome => s.equipes.find(e => e.nome === nome);
-  s.guardas.forEach(g => { if (!g.nomeEdital) { const n = NOMES_EDITAL[norm(g.nomeCompleto)]; if (n) g.nomeEdital = n; } });
-  // PPC: no edital a PPC ALFA trabalha em 4/5, 9/10… e a PPC BRAVO em 1, 5/6, 10/11… (os dois blocos tinham sido trocados)
-  const anc = id => ((s.ancorasHist || []).filter(a => a.equipeId === id).sort((a, b) => a.vigencia < b.vigencia ? -1 : 1)[0] || {}).data;
-  const p1 = eq('PPC ALFA'), p2 = eq('PPC BRAVO');
-  if (p1 && p2 && anc(p1.id) === '2026-09-05' && anc(p2.id) === '2026-09-04') {
-    p1.nome = 'PPC BRAVO'; p2.nome = 'PPC ALFA';
-    const i1 = s.equipes.indexOf(p1), i2 = s.equipes.indexOf(p2); s.equipes[i1] = p2; s.equipes[i2] = p1;
-  }
-  // Cláudia é vigia (Vigias ALFA), não da Patrulha Maria da Penha
-  const cl = s.guardas.find(g => norm(g.nomeCompleto) === 'claudia regina da silva'), va = eq('VIGIAS ALFA'), pm = eq('PATRULHA MARIA DA PENHA');
-  if (cl && va && pm && cl.equipeId === pm.id) cl.equipeId = va.id;
-  // Defesa Civil de expediente (08h às 17h), impressa à parte no edital
-  const adm = eq('ADMINISTRATIVO'), nw = s.guardas.find(g => norm(g.nomeCompleto) === 'newton ledra');
-  if (!eq('DEFESA CIVIL 08H–17H') && adm && nw && nw.equipeId === adm.id) {
-    const dc = { id: s.equipes.some(e => e.id === 'e36') ? uid('e') : 'e36', nome: 'DEFESA CIVIL 08H–17H', cicloId: adm.cicloId, grupo: 'Defesa Civil', exigeSupervisor: false, efetivoMinimo: 0, chefia: '', vinculo: '' };
-    s.equipes.push(dc);
-    const a0 = (s.ancorasHist || []).find(a => a.equipeId === adm.id);
-    s.ancorasHist.push({ equipeId: dc.id, data: a0 ? a0.data : '2026-09-07', vigencia: '0000-01-01' });
-    nw.equipeId = dc.id;
-  }
-  // Central de Monitoramento: equipe operacional sob a qual o edital a imprime
-  const V = { 'COMON ALFA': 'ALFA', 'COMON CHARLIE': 'BRAVO', 'COMON BRAVO': 'CHARLIE', 'COMON ECO': 'DELTA', 'COMON DELTA': 'ECO' };
-  s.equipes.forEach(e => { if (!e.vinculo && V[e.nome]) e.vinculo = V[e.nome]; });
-  if (!s.assinatura) s.assinatura = { nome: 'Lucas Raphael Zanoni', cargo: 'Coordenador Administrativo', cidade: 'Pinhais' };
-}
-
-// ----- Migração da base real para a versão 6 (matrículas do Banco de horas, sobrenomes completos, nome de guerra = nome do edital) -----
-const MAT6 = {"anderson luis dias da mata": {"m": "1175300", "g": "ANDERSON"}, "edi de abreu da cruz": {"m": "1195743", "g": "EDI"}, "fernanda costa": {"m": "2596202", "g": "FERNANDA"}, "heverton paulo paie": {"m": "1951203", "g": "HEVERTON"}, "peterson moreira de oliveira": {"m": "6389678", "g": "PETERSON"}, "vanessa maria wiezbicki": {"m": "1194208", "g": "VANESSA W."}, "alexander ribeiro": {"m": "6461034", "g": "ALEXANDER"}, "antonio sergio alves de lima": {"m": "821918", "g": "ANTONIO"}, "neidivaldo salustiano": {"m": "1194747", "g": "NEIDIVALDO", "n": "NEIDIVALDO SALUSTIANO DA SILVA", "old": "neidivaldo salustiano"}, "neidivaldo salustiano da silva": {"m": "1194747", "g": "NEIDIVALDO", "n": "NEIDIVALDO SALUSTIANO DA SILVA", "old": "neidivaldo salustiano"}, "rodrigo santos da silva": {"m": "2675137", "g": "RODRIGO"}, "vanessa arruda assuncao": {"m": "1195387", "g": "VANESSA A.", "n": "VANESSA ARRUDA ASSUNÇÃO DE PAULA", "old": "vanessa arruda assuncao"}, "vanessa arruda assuncao de paula": {"m": "1195387", "g": "VANESSA A.", "n": "VANESSA ARRUDA ASSUNÇÃO DE PAULA", "old": "vanessa arruda assuncao"}, "marcelo ramlow fernandes": {"m": "706884", "g": "MARCELO"}, "rosaria pflanzer": {"m": "6461158", "g": "ROSARIA"}, "reginaldo manfre": {"m": "1829467", "g": "REGINALDO"}, "gustavo mareziuzek": {"m": "1387634", "g": "GUSTAVO"}, "victor haluch junior": {"m": "1194720", "g": "VICTOR", "n": "VITOR HALUCH JUNIOR", "old": "victor haluch junior"}, "vitor haluch junior": {"m": "1194720", "g": "VICTOR", "n": "VITOR HALUCH JUNIOR", "old": "victor haluch junior"}, "bruno kovalhczuk ribeiro": {"m": "9119264", "g": "BRUNO K."}, "igor aguiar": {"m": "5942047", "g": "IGOR"}, "ricardo winicius miguel da silva resende": {"m": "6383050", "g": "RICARDO"}, "jennifer daiane vieira": {"m": "6387748", "g": "JENNIFER"}, "diego rafael correa da silva": {"m": "1193961", "g": "DIEGO"}, "bruno lucio": {"m": "2279118", "g": "BRUNO L."}, "alan da silva ramos": {"m": "1196227", "g": "ALAN"}, "everson prestes de medeiros": {"m": "1386646", "g": "EVERSON"}, "flavio rocha": {"m": "1196316", "g": "FLAVIO"}, "amanda de paula assuncao": {"m": "1196340", "g": "AMANDA"}, "atila alves goncalves": {"m": "6386199", "g": "ÁTILA"}, "augusto casimiro dos santos": {"m": "6461140", "g": "AUGUSTO"}, "fabricio de jesus nunes": {"m": "1194070", "g": "FABRÍCIO"}, "norton stresser": {"m": "6402895", "g": "NORTON"}, "ronilson belao rodrigues": {"m": "1388142", "g": "RONILSON"}, "valter rodrigues luciano": {"m": "877107", "g": "VALTER"}, "ivan de meira": {"m": "1388703", "g": "IVAN"}, "andre skodowski": {"m": "6461107", "g": "ANDRÉ"}, "everton piovezan": {"m": "1389289", "g": "EVERTON"}, "renan yudi tesuka": {"m": "2633973", "g": "RENAN YUDI"}, "jose roberto de souza": {"m": "1193341", "g": "JOSÉ ROBERTO"}, "roberto barbieri neto": {"m": "1193023", "g": "ROBERTO"}, "welington felipe godoy pacheco": {"m": "2639106", "g": "WELINGTON"}, "aldair silva": {"m": "1195794", "g": "ALDAIR"}, "gilson luiz sampaio cordeiro": {"m": "1194143", "g": "GILSON"}, "juliano pasche": {"m": "1094831", "g": "JULIANO"}, "rodrigo thadeu maia": {"m": "1225383", "g": "RODRIGO THADEU"}, "dario ribeiro soares junior": {"m": "1195000", "g": "DARIO"}, "marcelo rodrigues da silva": {"m": "1247956", "g": "MARCELO RODRIGUES"}, "edna maria dos santos": {"m": "1195255", "g": "EDNA", "n": "EDNA MARIA DOS SANTOS PRESTES", "old": "edna maria dos santos"}, "edna maria dos santos prestes": {"m": "1195255", "g": "EDNA", "n": "EDNA MARIA DOS SANTOS PRESTES", "old": "edna maria dos santos"}, "cleverson de oliveira lima": {"m": "1196294", "g": "CLEVERSON"}, "bruno salgado de souza": {"m": "1194755", "g": "BRUNO SALGADO", "n": "BRUNO BAYUK SALGADO DE SOUZA", "old": "bruno salgado de souza"}, "bruno bayuk salgado de souza": {"m": "1194755", "g": "BRUNO SALGADO", "n": "BRUNO BAYUK SALGADO DE SOUZA", "old": "bruno salgado de souza"}, "eraldo da luz torres": {"m": "6629490", "g": "ERALDO"}, "david goncalves cordeiro": {"m": "1388908", "g": "DAVID"}, "mauricio fernando tomczack": {"m": "1388223", "g": "MAURÍCIO"}, "sidinei pereira ribeiro": {"m": "1195506", "g": "SIDINEI"}, "cristiane mara pasternak": {"m": "1194550", "g": "CRISTIANE"}, "jeferson de oliveira lima": {"m": "1388118", "g": "JEFERSON"}, "renan fernandes martins": {"m": "6629504", "g": "RENAN FERNANDES"}, "orlei pereira dos santos": {"m": "6388108", "g": "ORLEI"}, "robson caetano de almeida": {"m": "1388860", "g": "ROBSON"}, "paula souza grilo": {"m": "1196014", "g": "PAULA SOUZA"}, "eder klemann": {"m": "1387928", "g": "EDER KLEMANN"}, "eder benites": {"m": "1196138", "g": "EDER BENITES"}, "gerson teixeira costa": {"m": "1194038", "g": "GERSON"}, "osnei jose de freitas rodrigues": {"m": "1193660", "g": "OSNEI"}, "marcel luis da silva": {"m": "1173170", "g": "MARCEL"}, "jociclei cristina kindinger de oliveira": {"m": "1389173", "g": "JOCICLEI"}, "erica da silva lascoski da cruz": {"m": "1193520", "g": "ERICA"}, "renata carvalho de castro eustaquio": {"m": "1194844", "g": "RENATA"}, "danilo moreira rocha": {"m": "1194259", "g": "DANILO"}, "juliana aparecida port": {"m": "1195999", "g": "JULIANA"}, "larissa mena rosa de oliveira": {"m": "931756", "g": "LARISSA"}, "bruno waesley paulino": {"m": "1388428", "g": "BRUNO WAESLEY"}, "paulo henrique borba mota": {"m": "1832832", "g": "PAULO HENRIQUE"}, "fernanda alves martins": {"m": "1195816", "g": "FERNANDA ALVES"}, "hugo benito almodovar": {"m": "3046230", "g": "HUGO"}, "renato dantas garcia": {"m": "1288660", "g": "RENATO"}, "rogerio nunes calixto de godoi": {"m": "454443", "g": "ROGÉRIO NUNES"}, "gustavo luiz mehl": {"m": "687995", "g": "GUSTAVO MEHL"}, "janaina erdman": {"m": "707384", "g": "JANAINA"}, "marcos adolfo luchtenberg": {"m": "6595146", "g": "MARCOS"}, "daniel eron costa": {"m": "1422774", "g": "DANIEL"}, "amarildo de souza alves": {"m": "706817", "g": "AMARILDO"}, "david esquitini": {"m": "706876", "g": "DAVID ESQUITINI"}, "domingos alves dos santos": {"m": "498246", "g": "DOMINGOS"}, "oleandro regis gaio": {"m": "7811", "g": "OLEANDRO"}, "ederson pereira de souza": {"m": "8311", "g": "EDERSON"}, "lizabete lourenco paulino": {"m": "7067879", "g": "LIZABETE", "n": "LIZABETE LOURENÇO", "old": "lizabete lourenco paulino"}, "lizabete lourenco": {"m": "7067879", "g": "LIZABETE", "n": "LIZABETE LOURENÇO", "old": "lizabete lourenco paulino"}, "osny cordeiro": {"m": "454354", "g": "OSNY"}, "robinson freire da silva": {"m": "12203", "g": "ROBINSON"}, "wilson mendes da silva": {"m": "2382377", "g": "WILSON"}, "jaime domingos ribeiro": {"m": "2452979", "g": "JAIME"}, "jhonathan de almeida fragoso": {"m": "6450032", "g": "JHONATHAN"}, "paulo roberto maia antunes": {"m": "6382096", "g": "PAULO ROBERTO"}, "gilson jose da silva filho": {"m": "6383513", "g": "GILSON JOSE"}, "vamil dellalibera de mello junior": {"m": "6386857", "g": "VAMIL"}, "rogerio alves": {"m": "620343", "g": "ROGÉRIO ALVES"}, "italo bruno araujo dos santos": {"m": "6386776", "g": "ITALO"}, "marcia ostroski de souza": {"m": "1194682", "g": "MARCIA"}, "uoshington fonseca da mota": {"m": "6461174", "g": "UOSHINGTON"}, "lelian rodrigues previato": {"m": "1194151", "g": "LELIAN"}, "sergio luiz vida vieira": {"m": "1195247", "g": "SERGIO"}, "claudia regina da silva": {"m": "676837", "g": "CLAUDIA"}, "carlos eduardo de moura abrantes": {"m": "1194836", "g": "CARLOS"}, "milto de melo junior": {"m": "1193759", "g": "MILTO"}, "paula fernanda barbosa": {"m": "1315676", "g": "PAULA FERNANDA"}, "evelyn helena da silva": {"m": "1194640", "g": "EVELYN"}, "ari antonio stermer": {"m": "1277090", "g": "ARI"}, "lincoln henrique olkuszewski da silva": {"m": "1388967", "g": "LINCOLN"}, "newton ledra": {"m": "693928", "g": "NEWTON"}, "kaique gustavo machado da silva": {"m": "1640534", "g": "KAIQUE"}, "johny ferreira de jesus": {"m": "1388673", "g": "JOHNY"}, "lucas raphael zanoni": {"m": "1388711", "g": "LUCAS"}, "maicon jose ribeiro": {"m": "2599910", "g": "MAICON"}, "joel bernardo da silva": {"m": "1195344", "g": "JOEL"}, "rafael guilherme dos santos": {"m": "1388487", "g": "RAFAEL"}};
-function migrarBase6(s) {
-  (s.guardas || []).forEach(g => {
-    const k = norm(g.nomeCompleto), info = MAT6[k];
-    if (!info) return;
-    if (!g.matricula) g.matricula = info.m;
-    if (info.n && info.old === k) g.nomeCompleto = info.n;
-    if (g.nomeEdital && g.nomeGuerra === info.g) g.nomeGuerra = g.nomeEdital;
-  });
-}
-function mesclarBaseReal(s) {
-  if ((s._baseRealVersao || 0) >= DADOS_REAIS._baseRealVersao) return;
-  const B = JSON.parse(JSON.stringify(DADOS_REAIS));
-  ['ciclos', 'equipes', 'guardas', 'ancorasHist', 'funcoes', 'feriados'].forEach(k => { s[k] = s[k] || []; });
-  B.ciclos.forEach(c => { if (!s.ciclos.some(x => x.id === c.id)) s.ciclos.push(c); });
-  B.funcoes.forEach(f => { if (!s.funcoes.some(x => x.id === f.id)) s.funcoes.push(f); });
-  B.equipes.forEach(e => { if (!s.equipes.some(x => x.id === e.id)) s.equipes.push(e); });
-  s.equipes.forEach(e => { const b = B.equipes.find(x => x.id === e.id); if (b && !e.grupo) e.grupo = b.grupo || ''; });
-  B.ancorasHist.forEach(a => { if (!s.ancorasHist.some(x => x.equipeId === a.equipeId)) s.ancorasHist.push(a); });
-  B.guardas.forEach(g => { if (!s.guardas.some(x => x.id === g.id || norm(x.nomeCompleto) === norm(g.nomeCompleto))) s.guardas.push(g); });
-  B.feriados.forEach(f => { if (!s.feriados.some(x => x.data === f.data)) s.feriados.push(f); });
-  migrarBase5(s); migrarBase6(s);
-  // correções de rótulo (só onde o usuário não editou)
-  const FIX = { 'VANESSA ARRUDA ASSUNÇÃO (SUPE IV)': 'VANESSA ARRUDA ASSUNÇÃO (SUEPE IV)', 'VITOR HALUCH JUNIOR (SUEPE V)': 'VICTOR HALUCH JUNIOR (SUEPE V)' };
-  s.equipes.forEach(e => { if (FIX[e.chefia]) e.chefia = FIX[e.chefia]; });
-  s._baseRealVersao = DADOS_REAIS._baseRealVersao;
-} // vigência da âncora inicial (vale para todo o passado)
-
 function cicloPadrao() {
   return [
     { id: 'c1', nome: '12x24x12x72', sequencia: ['D','N','F','F','F'], horarios: {
@@ -275,36 +229,12 @@ function cicloPadrao() {
   ];
 }
 
-// Sempre parte da base real; não há dados de exemplo.
-function seedState() { return normalizarEstado(JSON.parse(JSON.stringify(DADOS_REAIS))); }
+// Estado vazio: os dados reais vêm do Supabase (nada de pessoas embutido no código)
+const estadoVazio = () => normalizarEstado({});
 
 const RQ_TIPOS = { presencial: { nome: 'Presencial', cor: 'bg-indigo-100 text-indigo-800' }, ead: { nome: 'EAD', cor: 'bg-sky-100 text-sky-800' }, interna: { nome: 'Instrução interna', cor: 'bg-emerald-100 text-emerald-800' }, outro: { nome: 'Outro', cor: 'bg-slate-200 text-slate-700' } };
 const RQ_STATUS = { planejada: 'Planejada', realizada: 'Realizada', cancelada: 'Cancelada' };
 const PERFIS = ['ADMINISTRADOR', 'COMANDO', 'SUPERVISÃO', 'COORDENAÇÃO', 'OPERACIONAL'];
-const SALT_KEY_H = 'escalasGM.salt';
-function _bytesParaHex(buf) { return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join(''); }
-function _hexParaBytes(hex) { const a = new Uint8Array(hex.length / 2); for (let i = 0; i < a.length; i++) a[i] = parseInt(hex.substr(i * 2, 2), 16); return a; }
-async function _hashSenha(senha, saltHex) {
-  const enc = new TextEncoder();
-  const salt = _hexParaBytes(saltHex);
-  const key = await crypto.subtle.importKey('raw', enc.encode(senha), { name: 'PBKDF2' }, false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' }, key, 256);
-  return _bytesParaHex(bits);
-}
-async function _criarHashSenha(senha) {
-  let salt = null; try { salt = localStorage.getItem(SALT_KEY_H); } catch (e) {}
-  if (!salt) { salt = _bytesParaHex(crypto.getRandomValues(new Uint8Array(16))); try { localStorage.setItem(SALT_KEY_H, salt); } catch (e) {} }
-  const hash = await _hashSenha(senha, salt);
-  return { salt, hash };
-}
-async function _verificarSenha(senha, saltHex, hashAlvo) {
-  const h = await _hashSenha(senha, saltHex || '');
-  return h === hashAlvo;
-}
-const _tentativas = new Map();
-function _bloqueadoPorTentativas(login) { const t = _tentativas.get(login); if (!t) return false; if (Date.now() - t.inicio > 5 * 60 * 1000) { _tentativas.delete(login); return false; } return t.n >= 5; }
-function _registrarFalha(login) { const t = _tentativas.get(login) || { n: 0, inicio: Date.now() }; t.n++; _tentativas.set(login, t); }
-function _limparFalhas(login) { _tentativas.delete(login); }
 const slugNome = n => String(n).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 const TIPOS_BO_PADRAO = ['Apoio', 'Averiguação', 'Ameaça', 'Furto', 'Roubo', 'Perturbação', 'Trânsito', 'Violência doméstica', 'Acidente', 'Patrulhamento', 'Outros'];
 const TIPOS_RA_PADRAO = ['Queda de árvore', 'Alagamento', 'Enchente', 'Deslizamento', 'Risco estrutural', 'Destelhamento', 'Vistoria', 'Apoio à Defesa Civil', 'Outros'];
@@ -312,7 +242,7 @@ const TIPOS_VTR_PADRAO = ['Carro', 'Moto', 'Caminhonete', 'Outro'];
 const DEST_CI_PADRAO = ['Comando', 'Coordenação Administrativa (COADM)'];
 const REGRAS_PADRAO = { diurnoMin: 5, exigeSupDiurno: true, noturnoMaxAus: 1, romuMin: 3, gtamMin: 2 };
 function normalizarEstado(s) {
-  s = s && typeof s === 'object' ? s : seedState();
+  s = s && typeof s === 'object' ? s : {};
   s.instituicao = s.instituicao || 'Guarda Municipal';
   s.ciclos = Array.isArray(s.ciclos) && s.ciclos.length ? s.ciclos : cicloPadrao();
   s.equipes = Array.isArray(s.equipes) ? s.equipes : [];
@@ -456,74 +386,347 @@ function normalizarEstado(s) {
   return s;
 }
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { const st = JSON.parse(raw); try { mesclarBaseReal(st); } catch (e) { console.warn('Mesclagem da base falhou', e); } return normalizarEstado(st); }
-  } catch (e) { console.warn('Falha ao ler dados salvos', e); }
-  return seedState();
+/* ============================================================
+   ARMAZENAMENTO
+   Fonte de verdade: tabelas do Supabase (supabase/schema.sql + migracao_002.sql).
+   O localStorage guarda só um CACHE do último estado (abre mais rápido e vale se a internet cair).
+   As chaves antigas (STORAGE_KEY / BACKUP_KEY) nunca são gravadas por esta versão: só são LIDAS pelo
+   botão "Enviar dados deste navegador para o servidor" (Configurações).
+
+   O resto do app continua mexendo no objeto `state` e chamando save(). save() compara o state com o
+   que o servidor já tem e envia só os registros que mudaram (upsert/delete na tabela de cada um).
+   ============================================================ */
+const CACHE_KEY = 'escalasGM.cache.v2';
+const SYNC_DEBOUNCE_MS = 800;       // espera depois da última alteração antes de gravar
+const RECARGA_MIN_MS = 15000;       // intervalo mínimo entre recargas ao voltar para a aba
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let state = estadoVazio();
+let _appPronta = false;             // true depois do login e da carga dos dados
+
+/* ---------- Mapa state ⇄ tabelas ----------
+   t: tabela | k: lista no state | cols: colunas gravadas (snake_case; o nome vem do campo em camelCase)
+   ord: grava a posição na lista na coluna "ordem" (preserva a ordem de exibição)
+   nulos: '' vira null (datas, chaves estrangeiras, únicos) | refs: referência que não existe vira null
+   de/para: conversão própria quando o formato do banco é diferente | soInserir: nunca altera nem apaga */
+const TABS = [
+  { t: 'ciclos', k: 'ciclos', ord: 1, cols: ['id', 'nome', 'sequencia', 'horarios', 'folga_nos_feriados'] },
+  { t: 'funcoes', k: 'funcoes', ord: 1, cols: ['id', 'nome', 'pode_supervisionar', 'fixa'] },
+  { t: 'equipes', k: 'equipes', ord: 1, cols: ['id', 'nome', 'ciclo_id', 'grupo', 'exige_supervisor', 'efetivo_minimo', 'chefia', 'vinculo', 'cor'], nulos: ['ciclo_id'], refs: { ciclo_id: 'ciclos' } },
+  { t: 'guardas', k: 'guardas', ord: 1, cols: ['id', 'nome_completo', 'nome_guerra', 'nome_edital', 'matricula', 'funcao', 'equipe_id'], nulos: ['matricula', 'equipe_id'], refs: { equipe_id: 'equipes' } },
+  { t: 'setores', k: 'setores', cols: ['id', 'nome', 'codigo', 'descricao', 'ativo', 'ordem'] },
+  { t: 'frota', k: 'frota', cols: ['id', 'nome', 'tipo_id', 'placa', 'modelo', 'obs', 'status', 'ativo', 'ordem'] },
+  { t: 'pontos_cp', k: 'pontosCP', cols: ['id', 'nome', 'local', 'endereco', 'setor_id', 'obs', 'ativo', 'ordem'], nulos: ['setor_id'], refs: { setor_id: 'setores' } },
+  { t: 'tipos_bo', k: 'tiposBO', cols: ['id', 'nome', 'ativo', 'ordem'] },
+  { t: 'tipos_ra', k: 'tiposRA', cols: ['id', 'nome', 'ativo', 'ordem'] },
+  { t: 'tipos_vtr', k: 'tiposVTR', cols: ['id', 'nome', 'ativo', 'ordem'] },
+  { t: 'destinatarios_ci', k: 'destinatariosCI', cols: ['id', 'nome', 'ativo', 'ordem'] },
+  { t: 'ancoras', k: 'ancorasHist', ord: 1, cols: ['id', 'equipe_id', 'data', 'vigencia'], nulos: ['equipe_id'], refs: { equipe_id: 'equipes' },
+    de: a => ({ id: a.equipeId + '@' + a.vigencia, equipe_id: a.equipeId, data: a.data, vigencia: a.vigencia }),
+    para: r => ({ equipeId: r.equipe_id, data: r.data, vigencia: r.vigencia }) },
+  { t: 'horas_extras', k: 'horasExtras', ord: 1, cols: ['id', 'data', 'inicio', 'fim', 'horas', 'vagas', 'motivo', 'escalados'] },
+  { t: 'ausencias', k: 'ausencias', ord: 1, cols: ['id', 'guarda_id', 'tipo', 'inicio', 'fim', 'obs', 'criado_em'], nulos: ['guarda_id', 'fim', 'criado_em'], refs: { guarda_id: 'guardas' } },
+  { t: 'trocas', k: 'trocas', ord: 1, cols: ['id', 'guarda_a', 'data_a', 'guarda_b', 'data_b', 'obs', 'entradas', 'criado_em'], nulos: ['guarda_a', 'guarda_b', 'data_b', 'criado_em'], refs: { guarda_a: 'guardas', guarda_b: 'guardas' },
+    de: t => ({ id: t.id, guarda_a: t.a.guardaId, data_a: t.a.data, guarda_b: t.b.guardaId, data_b: t.b.data, obs: t.obs, entradas: t.entradas, criado_em: t.criadoEm }),
+    para: r => ({ id: r.id, criadoEm: r.criado_em || '', a: { guardaId: r.guarda_a, data: r.data_a }, b: { guardaId: r.guarda_b, data: r.data_b }, obs: r.obs || '', entradas: r.entradas || [] }) },
+  { t: 'trocas_jornada', k: 'trocasJornada', ord: 1, cols: ['id', 'guarda_id', 'de', 'para', 'turno_novo', 'turno_entrada', 'obs', 'atividade_id', 'entrada', 'criado_em'], nulos: ['guarda_id', 'criado_em'], refs: { guarda_id: 'guardas' } },
+  { t: 'atividades', k: 'atividades', ord: 1, cols: ['id', 'nome', 'tipo', 'inicio', 'fim', 'hora_ini', 'hora_fim', 'carga_h', 'vagas', 'local', 'obs', 'retira', 'conta', 'status', 'participantes', 'extras_sugeridas', 'criado_em'], nulos: ['criado_em'] },
+  { t: 'escalas_especiais', k: 'escalasEspeciais', ord: 1, cols: ['id', 'nome', 'ano', 'ano_ant', 'inicio', 'fim', 'natal', 'ano_novo', 'expediente', 'minimo', 'g', 'cob', 'criado'], nulos: ['criado'],
+    para: r => Object.assign(window.sb.paraApp(r), { criado: String(r.criado || '').slice(0, 10) }) },
+  { t: 'supervisoes', k: 'supervisoes', ord: 1, cols: ['id', 'data', 'turno', 'supervisor_id', 'status', 'efetivo_previsto', 'efetivo_presente', 'observacoes', 'data_hora_abertura', 'data_hora_fechamento', 'aberto_por', 'fechado_por', 'assinatura', 'efetivo', 'convocados', 'viaturas', 'bos', 'ras', 'cis', 'historico'],
+    nulos: ['supervisor_id', 'data_hora_abertura', 'data_hora_fechamento'], refs: { supervisor_id: 'guardas' } },
+  { t: 'comunicacoes', k: 'comunicacoes', ord: 1, cols: ['id', 'ano', 'seq', 'numero', 'data', 'assunto', 'destinatario_id', 'corpo', 'assinatura', 'status', 'supervisao_id', 'criado_por', 'criado_em', 'historico'], nulos: ['data', 'criado_em'] },
+  { t: 'configuracoes', tipo: 'cfg' },        // linha única (id = 1): instituição, feriados, regras, assinatura, logos, cabeçalho
+  { t: 'config_modulos', tipo: 'mod' },       // uma linha por módulo (ipm, superv_cfg, requal, boletins, limites_extras)
+  { t: 'usuarios', k: 'usuarios', cols: ['id', 'nome', 'matricula', 'login', 'perfil', 'setor', 'ativo'], nulos: ['matricula', 'setor'] },
+  { t: 'auditoria', k: 'auditoria', soInserir: true, cols: ['id', 'em', 'por', 'user_id', 'entidade', 'ref', 'acao', 'detalhe'], nulos: ['user_id'],
+    pos: r => { if (!UUID_RE.test(String(r.user_id || ''))) r.user_id = null; } },
+];
+const MODULOS = { ipm: 'ipm', supervCfg: 'superv_cfg', requal: 'requal', boletins: 'boletins', limitesExtras: 'limites_extras' };   // chave no state → id em config_modulos
+const ROTULO_TABELA = { ciclos: 'Ciclos', funcoes: 'Funções', equipes: 'Equipes', guardas: 'Guardas', ancoras: 'Âncoras de ciclo', horas_extras: 'Horas extras', ausencias: 'Afastamentos', trocas: 'Trocas de escala', trocas_jornada: 'Trocas de jornada', atividades: 'Atividades de requalificação', escalas_especiais: 'Escalas especiais', supervisoes: 'Supervisões', comunicacoes: 'Comunicações internas', frota: 'Viaturas', setores: 'Setores', pontos_cp: 'Pontos do cartão programa', tipos_bo: 'Tipos de B.O.', tipos_ra: 'Tipos de R.A.', tipos_vtr: 'Tipos de viatura', destinatarios_ci: 'Destinatários de C.I.', configuracoes: 'Configurações gerais', config_modulos: 'Ajustes de módulos', usuarios: 'Usuários', auditoria: 'Auditoria' };
+
+// Quem pode escrever em cada tabela. Espelha supabase/rls_perfis.sql e migracao_002.sql: o servidor é quem decide de verdade;
+// aqui serve para não tentar o que será recusado e para detectar exclusões negadas (com RLS elas não dão erro).
+const P_A = ['ADMINISTRADOR'], P_AC = [...P_A, 'COMANDO'], P_ACC = [...P_AC, 'COORDENAÇÃO'], P_ACCS = [...P_ACC, 'SUPERVISÃO'];
+const ESCREVE = { ciclos: P_A, funcoes: P_A, configuracoes: P_A, usuarios: P_A,
+  equipes: P_ACC, guardas: P_ACC, ancoras: P_ACC, horas_extras: P_ACC, ausencias: P_ACC, trocas: P_ACC, trocas_jornada: P_ACC, atividades: P_ACC, escalas_especiais: P_ACC,
+  supervisoes: P_ACCS, comunicacoes: P_ACCS, frota: P_AC, setores: P_AC, pontos_cp: P_AC, tipos_bo: P_AC, tipos_ra: P_AC, tipos_vtr: P_AC, destinatarios_ci: P_AC };
+function podeEscrever(t, id) {
+  if (!_perfilSb) return false;
+  if (t === 'auditoria') return true;
+  const lista = t === 'config_modulos' ? ((id === 'ipm' || id === 'superv_cfg') ? P_AC : P_ACC) : ESCREVE[t];
+  return !!lista && lista.includes(_perfilSb.perfil);
 }
-let state = loadState();
 
+function linhaDe(d, item, ids, i) {
+  let r;
+  if (d.de) r = d.de(item);
+  else { const sn = window.sb.paraSb(item); r = {}; d.cols.forEach(c => { if (sn[c] !== undefined) r[c] = sn[c]; }); }
+  if (d.ord) r.ordem = i;
+  (d.nulos || []).forEach(c => { if (r[c] === '' || r[c] === undefined) r[c] = null; });
+  Object.keys(d.refs || {}).forEach(c => { if (r[c] != null && !ids[d.refs[c]].has(r[c])) r[c] = null; });
+  if (d.pos) d.pos(r, item);
+  return r;
+}
+// state → { tabela: Map(id → linha) }
+function linhasDoEstado(st) {
+  const ids = {}; ['ciclos', 'equipes', 'guardas', 'setores'].forEach(k => { ids[k] = new Set((st[k] || []).map(x => x.id)); });
+  const out = {};
+  TABS.forEach(d => {
+    const m = new Map();
+    if (d.tipo === 'cfg') m.set('1', { id: 1, instituicao: st.instituicao, feriados: st.feriados, regras_efetivo: st.regrasEfetivo, assinatura: st.assinatura, logos: st.logos, cabecalho: st.cabecalho });
+    else if (d.tipo === 'mod') Object.keys(MODULOS).forEach(k => m.set(MODULOS[k], { id: MODULOS[k], dados: st[k] === undefined ? null : st[k] }));
+    else (st[d.k] || []).forEach((it, i) => { const r = linhaDe(d, it, ids, i); m.set(String(r.id), r); });
+    out[d.t] = m;
+  });
+  return out;
+}
+const itemDe = (d, r) => { const it = d.para ? d.para(r) : window.sb.paraApp(r); if (d.ord) delete it.ordem; return it; };
+// linhas lidas do servidor → state (sem normalizar)
+function aplicarLinhas(st, d, rows) {
+  if (d.tipo === 'cfg') { const r = rows[0]; if (r) Object.assign(st, { instituicao: r.instituicao, feriados: r.feriados, regrasEfetivo: r.regras_efetivo, assinatura: r.assinatura, logos: r.logos, cabecalho: r.cabecalho }); return; }
+  if (d.tipo === 'mod') { rows.forEach(r => { const k = Object.keys(MODULOS).find(x => MODULOS[x] === r.id); if (k && r.dados != null) st[k] = r.dados; }); return; }
+  st[d.k] = rows.map(r => itemDe(d, r));
+}
 
-let _ultimoBackupSalvo = 0, _saveAgendado = null;
-function _lerBackupMeta() { try { return JSON.parse(localStorage.getItem(BACKUP_META_KEY) || '{}') || {}; } catch (e) { return {}; } }
-function _gravarBackupMeta(meta) { try { localStorage.setItem(BACKUP_META_KEY, JSON.stringify(meta)); } catch (e) {} }
-function fazerBackup() {
-  try {
-    const payload = JSON.stringify({ em: new Date().toISOString(), state });
-    localStorage.setItem(BACKUP_KEY, payload);
-    _ultimoBackupSalvo = Date.now();
-    const meta = _lerBackupMeta();
-    meta.ultimo = new Date().toISOString();
-    meta.tamanho = payload.length;
-    _gravarBackupMeta(meta);
-    return true;
-  } catch (e) {
-    if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
-      try { localStorage.removeItem(BACKUP_KEY); localStorage.setItem(BACKUP_KEY, JSON.stringify({ em: new Date().toISOString(), state })); return true; } catch (e2) { return false; }
-    }
-    return false;
+/* ---------- Estado da sincronização ---------- */
+// JSON com as chaves ordenadas: o jsonb do Postgres reordena as chaves, e isso não pode contar como "alteração"
+const estavel = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.fromEntries(Object.keys(x).sort().map(c => [c, x[c]])) : x);
+const _sync = { base: {}, pronto: false, emVoo: false, sujo: false, carregando: false, timer: null, retry: null, falhas: 0, versao: 0, ultimaCarga: 0, ultimoEnvio: 0 };
+function baseDe(st) {
+  const cur = linhasDoEstado(st); _sync.base = {};
+  TABS.forEach(d => { const m = new Map(); cur[d.t].forEach((row, id) => m.set(id, { js: estavel(row), row })); _sync.base[d.t] = m; });
+}
+function difEstado(cur) {
+  const ups = {}, dels = {}; let n = 0;
+  TABS.forEach(d => {
+    const base = _sync.base[d.t] || (_sync.base[d.t] = new Map()), U = [], D = [];
+    cur[d.t].forEach((row, id) => { const b = base.get(id); if (!b) U.push({ id, row, js: estavel(row) }); else if (!d.soInserir) { const js = estavel(row); if (js !== b.js) U.push({ id, row, js }); } });
+    if (!d.soInserir && !d.tipo) base.forEach((b, id) => { if (!cur[d.t].has(id)) D.push(id); });
+    ups[d.t] = U; dels[d.t] = D; n += U.length + D.length;
+  });
+  return { ups, dels, n };
+}
+const pendencias = () => difEstado(linhasDoEstado(state)).n;
+
+function classificarErro(e) {
+  const m = String((e && e.message) || ''), c = e && e.code, st = e && e.status;
+  if (c === '42501' || st === 403 || /row-level security|permission denied/i.test(m)) return 'perm';
+  if (['42P01', '42703', 'PGRST204', 'PGRST205'].includes(c)) return 'estrutura';
+  if (!navigator.onLine || !st || st >= 500 || st === 401 || c === 'PGRST301' || /failed to fetch|networkerror|load failed|network request|jwt/i.test(m)) return 'rede';
+  return 'dados';
+}
+
+// Desfaz no state os registros que o servidor recusou, voltando ao que ele tem
+function reverterLinhas(d, ids) {
+  const base = _sync.base[d.t];
+  if (d.tipo) { ids.forEach(id => { const b = base.get(id); if (b) aplicarLinhas(state, d, [b.row]); }); return; }
+  const lista = state[d.k], idsEstado = {}; ['ciclos', 'equipes', 'guardas', 'setores'].forEach(k => { idsEstado[k] = new Set((state[k] || []).map(x => x.id)); });
+  const chaveDe = it => String(linhaDe(d, it, idsEstado, 0).id);
+  ids.forEach(id => {
+    const b = base.get(id), pos = lista.findIndex(it => chaveDe(it) === id);
+    if (b) { const it = itemDe(d, b.row); if (pos >= 0) lista[pos] = it; else lista.push(it); }
+    else if (pos >= 0) lista.splice(pos, 1);
+  });
+}
+function tratarNegados(negados) {
+  negados.forEach(n => reverterLinhas(TABS.find(d => d.t === n.t), n.ids));
+  normalizarEstado(state); gravarCache();
+  if (_appPronta) render();
+  const motivos = new Set(negados.map(n => n.motivo));
+  if (motivos.has('perm')) toast('Seu perfil não tem permissão para esta alteração', 'error');
+  if (motivos.has('estrutura')) toast('O banco de dados está desatualizado (falta rodar a migração). Avise o ADMINISTRADOR.', 'error');
+  if (motivos.has('dados')) toast('O servidor recusou esta alteração e ela foi desfeita' + (negados.find(n => n.motivo === 'dados').msg ? ': ' + negados.find(n => n.motivo === 'dados').msg : ''), 'error');
+}
+
+// Uma rodada: calcula o que mudou e envia (pais antes dos filhos nas gravações; filhos antes dos pais nas exclusões)
+async function sincronizarUmaVez() {
+  const dif = difEstado(linhasDoEstado(state));
+  if (!dif.n) return { ok: true };
+  const negados = []; let rede = null;
+  const falhou = (d, ids, e) => { const motivo = classificarErro(e); if (motivo === 'rede') { rede = e; return; } negados.push({ t: d.t, ids, motivo, msg: motivo === 'dados' ? String(e.message || '').replace(/^Erro ao [^:]+: /, '') : '' }); };
+  for (const d of TABS) {
+    const lista = dif.ups[d.t]; if (!lista.length || rede) continue;
+    const livres = lista.filter(x => podeEscrever(d.t, x.id)), barrados = lista.filter(x => !podeEscrever(d.t, x.id));
+    if (barrados.length) negados.push({ t: d.t, ids: barrados.map(x => x.id), motivo: 'perm' });
+    if (!livres.length) continue;
+    try {
+      await (d.soInserir ? window.sb.inserirNovos : window.sb.upsert)(d.t, livres.map(x => x.row));
+      livres.forEach(x => _sync.base[d.t].set(x.id, { js: x.js, row: x.row }));
+    } catch (e) { falhou(d, livres.map(x => x.id), e); }
   }
+  for (const d of [...TABS].reverse()) {
+    const ids = dif.dels[d.t]; if (!ids.length || rede) continue;
+    const livres = ids.filter(id => podeEscrever(d.t, id)), barrados = ids.filter(id => !podeEscrever(d.t, id));
+    if (barrados.length) negados.push({ t: d.t, ids: barrados, motivo: 'perm' });
+    if (!livres.length) continue;
+    try {
+      const removidos = await window.sb.deletarVarios(d.t, livres);
+      const faltam = livres.filter(id => !removidos.includes(id));
+      const restam = faltam.length ? await window.sb.existentes(d.t, faltam) : [];   // com RLS, exclusão negada não dá erro: confere se o registro ficou
+      livres.forEach(id => { if (!restam.includes(id)) _sync.base[d.t].delete(id); });
+      if (restam.length) negados.push({ t: d.t, ids: restam, motivo: 'perm' });
+    } catch (e) { falhou(d, livres, e); }
+  }
+  if (negados.length) tratarNegados(negados);
+  return { ok: !rede, rede };
 }
+
+async function sincronizar() {
+  clearTimeout(_sync.timer);
+  if (!_sync.pronto || !_perfilSb) return;
+  if (_sync.emVoo) { _sync.sujo = true; return; }
+  _sync.emVoo = true; clearTimeout(_sync.retry); setSync('salvando');
+  let rede = null;
+  try {
+    do { _sync.sujo = false; const r = await sincronizarUmaVez(); if (r.rede) { rede = r.rede; break; } } while (_sync.sujo);
+  } catch (e) { rede = e; console.warn('[SEGESP-GM] Falha ao sincronizar:', e && e.message); }
+  _sync.emVoo = false;
+  if (rede) {
+    _sync.falhas++; setSync(navigator.onLine ? 'erro' : 'offline', 'As alterações ficam neste aparelho e serão enviadas quando a conexão voltar.');
+    _sync.retry = setTimeout(sincronizar, Math.min(60000, 5000 * 2 ** Math.min(_sync.falhas, 4)));
+  } else { _sync.falhas = 0; _sync.ultimoEnvio = Date.now(); setSync('salvo'); }
+}
+function agendarSync() {
+  if (!_sync.pronto) return;
+  setSync('salvando'); clearTimeout(_sync.timer);
+  _sync.timer = setTimeout(sincronizar, SYNC_DEBOUNCE_MS);
+}
+
+/* ---------- Cache local (só para abrir mais rápido / sem internet) ---------- */
+let _cacheTimer = null;
+function gravarCache() {
+  clearTimeout(_cacheTimer);
+  if (!_perfilSb || !_appPronta) return;
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ uid: _perfilSb.id, perfil: _perfilSb, em: new Date().toISOString(), state })); } catch (e) { /* cache cheio ou bloqueado: o app segue sem ele */ }
+}
+const gravarCacheAgendado = () => { clearTimeout(_cacheTimer); _cacheTimer = setTimeout(gravarCache, 400); };
+function lerCache(uid) {
+  try { const o = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); return o && o.uid === uid && o.state && typeof o.state === 'object' ? o.state : null; } catch (e) { return null; }
+}
+function lerCachePerfil(uid) {
+  try { const o = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); return o && o.uid === uid && o.perfil && o.perfil.ativo ? o.perfil : null; } catch (e) { return null; }
+}
+const limparCache = () => { try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* sem armazenamento */ } };
+
 function save() {
   state._atualizadoEm = new Date().toISOString();
+  _sync.versao++;
+  gravarCacheAgendado();
+  agendarSync();
+}
+
+/* ---------- Leitura do servidor ---------- */
+async function lerServidor() {
+  const bruto = {};
+  const lotes = await Promise.all(TABS.map(d => d.t === 'auditoria' ? window.sb.ler('auditoria', 'em', { desc: true, limite: 400 }) : window.sb.ler(d.t, d.ord ? 'ordem' : 'id')));
+  TABS.forEach((d, i) => aplicarLinhas(bruto, d, lotes[i]));
+  if (bruto.auditoria) bruto.auditoria.reverse();   // do mais antigo para o mais recente, como no app
+  return normalizarEstado(bruto);
+}
+const mesmaTabela = (a, b) => !!b && a.size === b.size && [...a].every(([id, row]) => { const x = b.get(id); return x && x.js === estavel(row); });
+
+// Recarrega do servidor (ao voltar para a aba, ao reconectar, ou pelo botão). Antes envia o que estiver pendente.
+async function recarregarDoServidor(op = {}) {
+  if (!_appPronta || !_sync.pronto || _sync.carregando || !_perfilSb) return false;
+  if (!op.forcar) {
+    if (Date.now() - _sync.ultimaCarga < RECARGA_MIN_MS) return false;
+    if (modalAberto() || drawerAberto()) return false;
+    const a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && $('main').contains(a)) return false;   // não atrapalha quem está digitando
+  }
+  _sync.carregando = true;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (!op.descartar) { await sincronizar(); if (_sync.emVoo || pendencias()) return false; }   // ainda há alterações a enviar: não sobrescreve
+    const v0 = _sync.versao;
+    const p = await carregarPerfilSb();
+    if (!p.ok) { await sairComAviso(p.msg); return false; }
+    const perfilMudou = !_perfilSb || p.perfil.perfil !== _perfilSb.perfil || p.perfil.nome !== _perfilSb.nome;
+    _perfilSb = p.perfil;
+    const novo = await lerServidor();
+    if (_sync.versao !== v0 && !op.descartar) return false;   // o usuário alterou algo durante a leitura: tenta de novo depois
+    _sync.ultimaCarga = Date.now();
+    const cur = linhasDoEstado(novo);
+    const igual = TABS.every(d => mesmaTabela(cur[d.t], _sync.base[d.t]));
+    if (igual && !op.descartar) { if (perfilMudou) aplicarRota(); setSync('salvo'); return true; }
+    state = novo; baseDe(state); gravarCache(); setSync('salvo'); aplicarRota();
+    if (op.avisar) toast('Dados atualizados');
+    return true;
   } catch (e) {
-    const quota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014);
-    if (quota) {
-      toast('Armazenamento cheio. Exporte um backup e remova logos ou dados antigos.', 'error');
-      try { fazerBackup(); } catch (e2) {}
-    } else {
-      toast('Não foi possível salvar no navegador', 'error');
+    console.warn('[SEGESP-GM] Falha ao recarregar:', e && e.message);
+    setSync(navigator.onLine ? 'erro' : 'offline');
+    if (op.avisar) toast(navigator.onLine ? 'Não foi possível recarregar os dados' : 'Sem conexão com a internet', 'error');
+    return false;
+  } finally { _sync.carregando = false; }
+}
+
+/* ---------- Indicadores na tela ---------- */
+const SYNC_ROT = {
+  salvo: ['<span aria-hidden="true">✓</span>', 'Salvo', 'sync-ok'],
+  salvando: ['<span class="sync-spin" aria-hidden="true"></span>', 'Salvando…', 'sync-wait'],
+  carregando: ['<span class="sync-spin" aria-hidden="true"></span>', 'Carregando…', 'sync-wait'],
+  erro: ['<span aria-hidden="true">⚠</span>', 'Erro ao salvar', 'sync-err'],
+  offline: ['<span aria-hidden="true">⚠</span>', 'Sem conexão', 'sync-err'],
+};
+let _syncEstado = 'carregando';
+function setSync(estado, detalhe) {
+  _syncEstado = estado;
+  const [icone, texto, cls] = SYNC_ROT[estado] || SYNC_ROT.salvo;
+  document.querySelectorAll('[data-sync]').forEach(el => {
+    el.className = 'sync-ind ' + cls;
+    el.innerHTML = icone + '<span class="sync-txt">' + texto + '</span>';
+    el.title = detalhe || (estado === 'salvo' && _sync.ultimoEnvio ? 'Último envio: ' + fmtDataHora(new Date(_sync.ultimoEnvio).toISOString()) : (estado === 'erro' || estado === 'offline') ? 'Toque para tentar de novo' : '');
+  });
+}
+function syncClique() {
+  if (_syncEstado === 'erro' || _syncEstado === 'offline') { _sync.falhas = 0; sincronizar().then(() => recarregarDoServidor({ forcar: true, avisar: true })); }
+  else recarregarDoServidor({ forcar: true, avisar: true });
+}
+function mostrarCarregando(msg, acoes) {
+  const el = $('carregando'); el.hidden = false;
+  $('carregando-msg').textContent = msg || 'Carregando dados…';
+  $('carregando-acoes').innerHTML = acoes || '';
+  el.classList.toggle('com-erro', !!acoes);
+}
+const ocultarCarregando = () => { $('carregando').hidden = true; };
+
+/* ---------- Entrada no app (depois do login) ---------- */
+async function iniciarApp() {
+  const cache = lerCache(_perfilSb.id);
+  if (!cache) limparCache();   // some cópia de outro usuário que tenha ficado neste aparelho
+  setSync('carregando');
+  if (cache) {   // abre na hora com o que estava salvo e atualiza em seguida
+    state = normalizarEstado(cache); _appPronta = true;
+    ocultarCarregando(); document.body.classList.add('app-carregando'); aplicarRota();
+  } else mostrarCarregando('Carregando dados…');
+  try {
+    state = await lerServidor();
+  } catch (e) {
+    console.warn('[SEGESP-GM] Falha ao carregar do servidor:', e && e.message);
+    if (!cache) {
+      mostrarCarregando(navigator.onLine ? 'Não foi possível carregar os dados do servidor.' : 'Sem conexão com a internet.',
+        '<button onclick="iniciarApp()" class="login-btn" style="padding:0 18px">Tentar de novo</button><button onclick="sairSupabase()" class="login-btn" style="padding:0 18px;background:#64748b">Sair</button>');
+      setSync(navigator.onLine ? 'erro' : 'offline');
+      return;
     }
+    // sem servidor, segue com o cache; o que for alterado é enviado quando a conexão voltar
+    baseDe(state); _sync.pronto = true; _appPronta = true; ocultarCarregando();
+    document.body.classList.remove('app-carregando'); setSync('offline', 'Mostrando os dados salvos neste aparelho.');
+    toast('Sem conexão com o servidor: mostrando os dados salvos neste aparelho', 'warn');
     return;
   }
-  const agora = Date.now();
-  if (agora - _ultimoBackupSalvo > BACKUP_INTERVALO_MS) {
-    clearTimeout(_saveAgendado);
-    _saveAgendado = setTimeout(() => { fazerBackup(); }, 2000);
-  }
+  baseDe(state); _sync.pronto = true; _appPronta = true; _sync.ultimaCarga = Date.now();
+  gravarCache(); ocultarCarregando(); document.body.classList.remove('app-carregando');
+  setSync('salvo'); aplicarRota();
 }
-function restaurarBackup() {
-  try {
-    const raw = localStorage.getItem(BACKUP_KEY);
-    if (!raw) { toast('Nenhum backup automático encontrado', 'warn'); return false; }
-    const obj = JSON.parse(raw);
-    if (!obj || !obj.state) { toast('Backup inválido', 'error'); return false; }
-    state = normalizarEstado(obj.state);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
-    render();
-    toast('Backup de ' + fmtDataHora(obj.em) + ' restaurado');
-    return true;
-  } catch (e) { toast('Falha ao restaurar backup: ' + e.message, 'error'); return false; }
-}
-function idadeUltimoBackup() {
-  const meta = _lerBackupMeta();
-  if (!meta.ultimo) return null;
-  return Math.round((Date.now() - new Date(meta.ultimo).getTime()) / 864e5);
-}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') recarregarDoServidor();   // pega alterações feitas por outros usuários
+  else { gravarCache(); if (_sync.pronto && pendencias()) sincronizar(); }
+});
+window.addEventListener('pagehide', gravarCache);
+window.addEventListener('online', () => { if (_sync.pronto) sincronizar().then(() => recarregarDoServidor({ forcar: true })); });
+window.addEventListener('offline', () => { if (_sync.pronto) setSync('offline', 'Sem conexão: as alterações serão enviadas quando voltar.'); });
+window.addEventListener('beforeunload', ev => { if (_sync.pronto && (_sync.emVoo || _syncEstado === 'erro' || _syncEstado === 'offline') && pendencias()) { ev.preventDefault(); ev.returnValue = ''; } });
 
 /* ============================================================
    UTILITÁRIOS
@@ -848,6 +1051,7 @@ function _a11yClicaveis() {
   });
 }
 function render() {
+  if (!_appPronta) return;
   _margCache = {}; _supEfCache = {};
   renderNav();
   ({ hoje: viewHoje, semana: viewSemana, mes: viewMes, guarda: viewGuarda, equipe: viewEquipe, extras: viewExtras, ocorr: viewOcorrencias, efetivo: viewEfetivo, requal: viewRequal, superv: viewSuperv, frota: viewFrota, especial: viewEspecial, ipm: viewIpm, docsup: viewDocSuperv, docs: viewDocs, cadastros: viewCadastros, config: viewConfig }[view] || viewHoje)();
@@ -4148,7 +4352,6 @@ async function baixarPlanilhaRequal() {
    ESCALA BASE = quem deveria trabalhar · SUPERVISÃO = como o efetivo foi empregado.
    ============================================================ */
 let supSel = '', supTab = 'efetivo', supMes = (() => { const h = new Date(); return new Date(h.getFullYear(), h.getMonth(), 1); })(), supEdicaoPosterior = {}, supGrupoFiltro = '', _supEfCache = {};
-let sessaoUserId = (() => { try { return localStorage.getItem('escalasgm_user') || ''; } catch (e) { return ''; } })();
 const SUP_TURNO = { D: 'Diurno', N: 'Noturno' };
 const SUP_ABAS = [];          // [id, rótulo, função(sup) → html]; cada bloco acrescenta a sua
 const ALERTAS_SUP = [];       // funções (sup, ef) → [{nivel, cod, txt, vtrId?, guardaId?}]
@@ -4164,18 +4367,14 @@ const PERMISSOES = {
   'COORDENAÇÃO': ['especial.editar', 'supervisao.ver', 'ci.criar', 'ci.assinar', 'tela.cadastros'],
   OPERACIONAL: ['supervisao.ver']
 };
-const usuarioAtual = () => state.usuarios.find(u => u.id === sessaoUserId && u.ativo) || null;
-const modoAberto = () => state.usuarios.length === 0;   // sem usuários cadastrados o sistema segue como antes (sem restrição)
-let _perfilSb = null;   // linha da tabela usuarios do Supabase (preenchida após o login)
+let _perfilSb = null;   // linha da tabela usuarios do Supabase (preenchida após o login); null = ninguém logado
+const usuarioAtual = () => _perfilSb;
 function can(acao) {
-  if (typeof somenteLeitura !== 'undefined' && somenteLeitura && acao !== 'supervisao.ver') return false;
-  if (_perfilSb) { const p = PERMISSOES[_perfilSb.perfil] || []; return p.includes('*') || p.includes(acao); }
-  if (modoAberto()) return true;
-  const u = usuarioAtual(); if (!u) return acao === 'supervisao.ver';
-  const p = PERMISSOES[u.perfil] || []; return p.includes('*') || p.includes(acao);
+  if (!_perfilSb) return false;   // sem perfil ativo não há acesso: o app nunca funciona em "modo aberto"
+  const p = PERMISSOES[_perfilSb.perfil] || []; return p.includes('*') || p.includes(acao);
 }
-function exigir(acao) { if (can(acao)) return true; toast(modoAberto() || usuarioAtual() ? 'Seu perfil não tem permissão para esta ação' : 'Entre com um usuário para executar esta ação', 'error'); return false; }
-const quemFez = () => { const u = usuarioAtual(); return u ? `${u.nome} (${u.login})` : 'Sem usuário (modo aberto)'; };
+function exigir(acao) { if (can(acao)) return true; toast('Seu perfil não tem permissão para esta ação', 'error'); return false; }
+const quemFez = () => { const u = usuarioAtual(); return u ? `${u.nome} (${u.login})` : 'Sem usuário'; };
 function auditar(entidade, ref, acao, detalhe, sup) {
   const u = usuarioAtual(), e = { id: uid('au_'), em: agoraISO(), por: quemFez(), userId: u ? u.id : '', entidade, ref, acao, detalhe: detalhe || '' };
   state.auditoria.push(e); if (state.auditoria.length > 400) state.auditoria.splice(0, state.auditoria.length - 400);
@@ -4246,7 +4445,7 @@ function viewSuperv() {
   $('main').innerHTML = `
     <div class="flex items-center justify-between flex-wrap gap-2 mb-3">${navData("supMes=new Date(supMes.getFullYear(),supMes.getMonth()-1,1);render()", nomeMes(supMes), "supMes=new Date(supMes.getFullYear(),supMes.getMonth()+1,1);render()")}
       <div class="flex gap-2 flex-wrap"><button onclick="supCad=true;render()" class="${BTN_G}">Cadastros</button><button onclick="novaSupervisao()" class="${BTN_P}">+ Nova supervisão</button></div></div>
-    <div class="text-xs text-slate-500 mb-3">${modoAberto() ? 'Modo aberto: ainda não há usuários cadastrados, então qualquer pessoa pode operar.' : `Usuário: <b>${esc(u ? u.nome + ' · ' + u.perfil : 'ninguém (somente leitura)')}</b>`}</div>
+    <div class="text-xs text-slate-500 mb-3">Usuário: <b>${esc(u ? u.nome + ' · ' + u.perfil : '—')}</b></div>
     ${lista.length ? `<div class="grid grid-cols-1 gap-3 lg:grid-cols-2">${lista.map(cartaSupervisao).join('')}</div>` : `<div class="${CARD} p-8 text-center"><p class="text-sm text-slate-500 mb-3">Nenhuma supervisão em ${nomeMes(supMes)}.</p><button onclick="novaSupervisao()" class="${BTN_P}">Abrir supervisão</button></div>`}`;
 }
 function cartaSupervisao(s) {
@@ -4444,8 +4643,8 @@ const CADASTROS = {
   tiposVTR: { tit: 'Tipos de viatura', ajuda: 'Carro, moto, caminhonete…', campos: [['nome', 'Tipo', 'text', 1], ['ordem', 'Ordem', 'number'], ['ativo', 'Ativo', 'bool']] },
   destinatariosCI: { tit: 'Destinatários das C.I.s (setores e coordenações)', ajuda: 'Quem pode receber uma Comunicação Interna.', campos: [['nome', 'Nome', 'text', 1], ['ordem', 'Ordem', 'number'], ['ativo', 'Ativo', 'bool']] }
 };
-const permCad = key => key === 'usuarios' ? 'usuarios.gerir' : key === 'frota' ? 'frota.gerir' : 'cadastros.supervisao';
-const CAD_PREFIXO = { frota: 'fr_', setores: 'st_', pontosCP: 'cp_', tiposBO: 'tbo_', tiposRA: 'tra_', tiposVTR: 'tvt_', destinatariosCI: 'dci_', usuarios: 'us_' };
+const permCad = key => key === 'frota' ? 'frota.gerir' : 'cadastros.supervisao';
+const CAD_PREFIXO = { frota: 'fr_', setores: 'st_', pontosCP: 'cp_', tiposBO: 'tbo_', tiposRA: 'tra_', tiposVTR: 'tvt_', destinatariosCI: 'dci_' };
 function supCadEmUso(key, id) {
   const S = state.supervisoes;
   if (key === 'setores') return S.some(s => s.viaturas.some(v => v.setorId === id)) || state.pontosCP.some(p => p.setorId === id);
@@ -4479,7 +4678,7 @@ function supSalvarParametros() {
 }
 function supCadForm(key, id) {
   if (!exigir(permCad(key))) return;
-  const D = key === 'usuarios' && typeof CADASTRO_USUARIOS !== 'undefined' ? CADASTRO_USUARIOS : CADASTROS[key]; if (!D) return;
+  const D = CADASTROS[key]; if (!D) return;
   const it = id ? state[key].find(x => x.id === id) : { ativo: true, ordem: ordenaCad(state[key]).length + 1 };
   const campo = ([k, rot, tipo]) => {
     const v = it[k] === undefined ? '' : it[k];
@@ -4493,9 +4692,9 @@ function supCadForm(key, id) {
 }
 function supCadSalvar(key, id) {
   if (!exigir(permCad(key))) return;
-  const D = key === 'usuarios' && typeof CADASTRO_USUARIOS !== 'undefined' ? CADASTRO_USUARIOS : CADASTROS[key], novo = id ? state[key].find(x => x.id === id) : { id: uid(CAD_PREFIXO[key]) }, dados = {};
+  const D = CADASTROS[key], novo = id ? state[key].find(x => x.id === id) : { id: uid(CAD_PREFIXO[key]) }, dados = {};
   for (const [k, rot, tipo, obrig] of D.campos) { const el = $('cd-' + k); dados[k] = tipo === 'bool' ? el.checked : tipo === 'number' ? (Number(el.value) || 0) : el.value.trim(); if (obrig && !dados[k]) { toast(`Informe: ${rot}`, 'error'); return; } }
-  const nome = dados.nome; if (state[key].some(x => x.id !== novo.id && x.nome && String(x.nome).toLowerCase() === String(nome).toLowerCase() && key !== 'usuarios')) { toast('Já existe um cadastro com este nome', 'error'); return; }
+  const nome = dados.nome; if (state[key].some(x => x.id !== novo.id && x.nome && String(x.nome).toLowerCase() === String(nome).toLowerCase())) { toast('Já existe um cadastro com este nome', 'error'); return; }
   if (D.validar) { const e = D.validar(dados, novo); if (e) { toast(e, 'error'); return; } }
   Object.assign(novo, dados); if (!id) state[key].push(novo); if (D.apos) D.apos(novo, !id);
   auditar('cadastro', novo.id, id ? 'cadastro_editar' : 'cadastro_criar', `${key}: ${nome || dados.login}`); _supEfCache = {}; save(); closeModal(); render(); toast('Cadastro salvo');
@@ -4504,7 +4703,6 @@ function supCadExcluir(key, id) {
   if (!exigir(permCad(key))) return;
   const x = state[key].find(i => i.id === id); if (!x) return;
   if (supCadEmUso(key, id)) { confirmar('Cadastro em uso', `<p><b>${esc(x.nome)}</b> já foi usado em supervisões. Para não perder o histórico, ele será apenas <b>inativado</b> (some das listas de escolha).</p>`, () => { x.ativo = false; auditar('cadastro', id, 'cadastro_inativar', `${key}: ${x.nome}`); save(); closeModal(); render(); toast('Cadastro inativado'); }, 'Inativar'); return; }
-  if (key === 'usuarios' && typeof usuarioRemovivel === 'function' && !usuarioRemovivel(x)) return;
   confirmar('Excluir cadastro', `<p>Excluir <b>${esc(x.nome)}</b>?</p>`, () => { state[key] = state[key].filter(i => i.id !== id); auditar('cadastro', id, 'cadastro_excluir', `${key}: ${x.nome}`); save(); closeModal(); render(); toast('Cadastro excluído'); }, 'Excluir', true);
 }
 /* ---------- BLOCO 3: HT / rádios ---------- */
@@ -4680,69 +4878,58 @@ function viewDocSuperv() {
   ajustarZoomDoc();
 }
 /* ---------- BLOCO 11: usuários e perfis (base estrutural) ---------- */
-const CADASTRO_USUARIOS = { tit: 'Usuários', campos: [['nome', 'Nome', 'text', 1], ['matricula', 'Matrícula', 'text'], ['login', 'Login', 'text', 1], ['perfil', 'Perfil', 'perfil'], ['setor', 'Setor/Coordenação', 'select:destinatariosCI'], ['ativo', 'Ativo', 'bool']],
-  validar(d, u) {
-    d.login = String(d.login || '').toLowerCase().replace(/\s+/g, ''); if (!d.login) return 'Informe o login';
-    if (state.usuarios.some(x => x.id !== u.id && x.login === d.login)) return 'Já existe um usuário com este login';
-    if (!state.usuarios.length && d.perfil !== 'ADMINISTRADOR') return 'O primeiro usuário precisa ser ADMINISTRADOR (senão ninguém conseguiria gerir os demais)';
-    const admins = state.usuarios.filter(x => x.id !== u.id && x.ativo && x.perfil === 'ADMINISTRADOR').length + (d.ativo && d.perfil === 'ADMINISTRADOR' ? 1 : 0);
-    if (state.usuarios.length && admins < 1) return 'Precisa existir ao menos um ADMINISTRADOR ativo';
-    return '';
-  },
-  apos(u, novo) { if (novo && state.usuarios.length === 1) { sessaoUserId = u.id; try { localStorage.setItem('escalasgm_user', u.id); } catch (e) { /* sem armazenamento */ } } } };
-function usuarioRemovivel(x) { if (x.perfil === 'ADMINISTRADOR' && x.ativo && state.usuarios.filter(u => u.ativo && u.perfil === 'ADMINISTRADOR').length <= 1) { toast('Não é possível excluir o único ADMINISTRADOR ativo', 'error'); return false; } return true; }
-function supFormEntrar() {
-  const us = state.usuarios.filter(u => u.ativo);
-  if (!us.length) { toast('Cadastre ao menos um usuário', 'warn'); return; }
-  openModal('Entrar', '<div class="space-y-3"><div><label class="block text-sm font-medium mb-1">Login</label><input id="log-login" class="' + INPUT + '" autocomplete="username" autocapitalize="none" autocorrect="off"></div><div><label class="block text-sm font-medium mb-1">Senha</label><input id="log-senha" type="password" class="' + INPUT + '" autocomplete="current-password"></div><p id="log-erro" class="text-xs text-red-700 min-h-[16px]"></p><p class="text-xs text-slate-500">Primeiro acesso? O ADMINISTRADOR define a senha em Supervisão › Usuários.</p></div>', '<div class="flex gap-2"><button onclick="closeModal()" class="' + BTN_G + '">Cancelar</button><button id="log-btn" onclick="supEntrarForm()" class="' + BTN_P + ' flex-1">Entrar</button></div>');
-  setTimeout(() => { const l = $('log-login'); if (l) l.focus(); }, 80);
-  ['log-login', 'log-senha'].forEach(id => { const el = $(id); if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); supEntrarForm(); } }); });
-}
-async function supEntrarForm() {
-  const login = ($('log-login').value || '').trim().toLowerCase();
-  const senha = $('log-senha').value || '';
-  const erro = m => { if ($('log-erro')) $('log-erro').textContent = m; };
-  if (!login || !senha) { erro('Informe login e senha'); return; }
-  if (_bloqueadoPorTentativas(login)) { erro('Muitas tentativas. Aguarde 5 minutos.'); return; }
-  const u = state.usuarios.find(x => x.login === login && x.ativo);
-  if (!u) { _registrarFalha(login); erro('Login ou senha inválidos'); return; }
-  if (!u.hash || !u.salt) { erro('Este usuário ainda não tem senha. Peça ao ADMINISTRADOR para definir uma.'); return; }
-  const btn = $('log-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
-  let ok = false;
-  try { ok = await _verificarSenha(senha, u.salt, u.hash); } catch (e) { erro('Erro: ' + e.message); }
-  if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
-  if (!ok) { _registrarFalha(login); erro('Login ou senha inválidos'); return; }
-  _limparFalhas(login);
-  sessaoUserId = u.id;
-  try { localStorage.setItem('escalasgm_user', u.id); } catch (e) {}
-  auditar('usuario', u.id, 'entrada', u.nome + ' (' + u.perfil + ')');
-  save(); closeModal(); render(); toast('Bem-vindo(a), ' + u.nome);
-}
-function supFormSenha(id) {
-  const u = state.usuarios.find(x => x.id === id); if (!u) return;
-  const primeiro = !u.hash;
-  openModal(primeiro ? 'Definir senha' : 'Trocar senha', '<div class="space-y-3"><p class="text-sm text-slate-600">Usuário: <b>' + esc(u.nome) + '</b> (' + esc(u.login) + ')</p><div><label class="block text-sm font-medium mb-1">Nova senha</label><input id="sn-senha" type="password" class="' + INPUT + '" autocomplete="new-password"></div><div><label class="block text-sm font-medium mb-1">Repetir</label><input id="sn-senha2" type="password" class="' + INPUT + '" autocomplete="new-password"></div><p class="text-xs text-slate-500">Mínimo ' + SENHA_MIN + ' caracteres. A senha nunca é gravada em texto.</p></div>', '<div class="flex gap-2"><button onclick="closeModal()" class="' + BTN_G + '">Cancelar</button><button onclick="supSalvarSenha(\'' + id + '\')" class="' + BTN_P + '">Salvar senha</button></div>');
-}
-async function supSalvarSenha(id) {
-  const u = state.usuarios.find(x => x.id === id); if (!u) return;
-  const s1 = $('sn-senha').value, s2 = $('sn-senha2').value;
-  if (s1.length < SENHA_MIN) { toast('A senha precisa ter pelo menos ' + SENHA_MIN + ' caracteres', 'error'); return; }
-  if (s1 !== s2) { toast('As senhas não conferem', 'error'); return; }
-  const { salt, hash } = await _criarHashSenha(s1);
-  u.salt = salt; u.hash = hash; u.senhaDefinidaEm = new Date().toISOString();
-  save(); closeModal(); render(); toast('Senha salva');
-}
-function supEntrar(id) { const u = state.usuarios.find(x => x.id === id && x.ativo); if (!u) return; sessaoUserId = id; try { localStorage.setItem('escalasgm_user', id); } catch (e) { /* sem armazenamento */ } auditar('usuario', id, 'entrada', `${u.nome} (${u.perfil})`); save(); closeModal(); render(); toast(`Operando como ${u.nome}`); }
-function supSair() { const u = usuarioAtual(); if (u) auditar('usuario', u.id, 'saida', u.nome); sessaoUserId = ''; try { localStorage.removeItem('escalasgm_user'); } catch (e) { /* sem armazenamento */ } save(); render(); }
 const ACOES_ROT = { 'tela.cadastros': 'Ver a tela Cadastros', 'tela.config': 'Ver a tela Configurações', 'ipm.editar': 'Ajustar a escala IPM e a relação de liderança', 'frota.gerir': 'Editar cadastro de viaturas', 'supervisao.ver': 'Ver supervisões', 'supervisao.abrir': 'Abrir supervisão', 'supervisao.editar': 'Editar serviço aberto', 'supervisao.fechar': 'Fechar serviço', 'supervisao.editarFechada': 'Alterar serviço fechado', 'cadastros.supervisao': 'Editar cadastros', 'ci.criar': 'Criar C.I.', 'ci.assinar': 'Assinar C.I.', 'usuarios.gerir': 'Gerir usuários' };
+const adminsAtivos = ignorarId => state.usuarios.filter(x => x.id !== ignorarId && x.ativo && x.perfil === 'ADMINISTRADOR').length;
 function supSecaoUsuarios() {
-  if (!(modoAberto() || can('usuarios.gerir') || can('usuarios.ver'))) return '';
-  const u = usuarioAtual(), us = state.usuarios, aud = state.auditoria.slice(-30).reverse();
-  return `<div class="${CARD} p-4 mb-3"><div class="flex items-start justify-between gap-2 mb-1"><div><h3 class="font-semibold">Usuários e permissões</h3><p class="text-xs text-slate-500">Base estrutural: ainda não há senha. As permissões são conferidas nas funções que alteram os dados, e as ações importantes registram quem as fez.</p></div><button onclick="supCadForm('usuarios')" class="${BTN_O} shrink-0">+ Novo</button></div>
-    <div class="text-sm py-2">${modoAberto() ? 'Sem usuários cadastrados: o sistema segue aberto, como antes. O primeiro usuário deve ser ADMINISTRADOR.' : `Operando como: <b>${esc(u ? u.nome + ' · ' + u.perfil : 'ninguém (somente leitura)')}</b>`}${us.some(x => x.ativo) ? ` <button onclick="supFormEntrar()" class="tt px-2 text-primary text-sm underline">${u ? 'Trocar' : 'Entrar'}</button>${u ? `<button onclick="supSair()" class="tt px-2 text-slate-500 text-sm underline">Sair</button>` : ''}` : ''}</div>
-    ${us.length ? us.map(x => '<div class="py-1.5 border-t border-slate-100 flex items-center justify-between gap-2 ' + (x.ativo ? '' : 'opacity-50') + '"><div class="min-w-0 text-sm cursor-pointer" onclick="supCadForm(\'usuarios\',\'' + x.id + '\')"><b>' + esc(x.nome) + '</b> <span class="text-xs text-slate-500">' + esc(x.login) + ' · mat. ' + esc(x.matricula || '—') + '</span></div><div class="flex items-center gap-1 shrink-0"><button onclick="event.stopPropagation();supFormSenha(\'' + x.id + '\')" class="tt px-2 text-xs ' + (x.hash ? 'text-slate-600' : 'text-amber-700 font-semibold') + '">' + (x.hash ? 'Trocar senha' : 'Definir senha') + '</button><span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100">' + x.perfil + (x.ativo ? '' : ' · inativo') + '</span></div></div>').join('') : ''}
+  if (!(can('usuarios.gerir') || can('usuarios.ver'))) return '';
+  const pode = can('usuarios.gerir'), u = usuarioAtual(), us = state.usuarios.slice().sort((a, b) => a.nome < b.nome ? -1 : 1), aud = state.auditoria.slice(-30).reverse();
+  return `<div class="${CARD} p-4 mb-3"><div class="flex items-start justify-between gap-2 mb-1"><div><h3 class="font-semibold">Usuários e permissões</h3>
+    <p class="text-xs text-slate-500">Esta lista é a tabela <b>usuarios</b> do Supabase. O <b>login</b> (e-mail e senha) é criado no painel do Supabase: <i>Authentication → Users → Add user</i>. ${pode ? 'Depois toque em <b>+ Vincular login</b>, informe o <i>User UID</i> do login criado e escolha o perfil.' : 'Quem vincula o login a um perfil é o ADMINISTRADOR.'} Quem não está na lista, ou está inativo, não consegue entrar. A senha também se troca no painel do Supabase.</p></div>${pode ? `<button onclick="usuForm()" class="${BTN_O} shrink-0">+ Vincular login</button>` : ''}</div>
+    <div class="text-sm py-2">Você: <b>${esc(u ? u.nome + ' · ' + u.perfil : '—')}</b> <button onclick="sairSupabase()" class="tt px-2 text-slate-500 text-sm underline">Sair</button></div>
+    ${us.length ? us.map(x => `<div class="py-1.5 border-t border-slate-100 flex items-center justify-between gap-2 ${x.ativo ? '' : 'opacity-50'}"${pode ? ` onclick="usuForm('${x.id}')"` : ''}><div class="min-w-0 text-sm"><b>${esc(x.nome)}</b> <span class="text-xs text-slate-500">${esc(x.login)} · mat. ${esc(x.matricula || '—')}</span></div><div class="flex items-center gap-1 shrink-0"><span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100">${esc(x.perfil)}</span>${x.ativo ? '' : '<span class="text-[11px] text-slate-500">(inativo)</span>'}</div></div>`).join('') : '<p class="text-sm text-slate-500">Nenhum usuário visível para o seu perfil.</p>'}
     <details class="mt-2"><summary class="text-sm text-primary cursor-pointer">Perfis e permissões</summary><div class="overflow-x-auto mt-2"><table class="text-xs w-full"><thead><tr><th class="text-left py-1 pr-2">Ação</th>${PERFIS.map(p => `<th class="px-1 text-center">${p.slice(0, 4)}.</th>`).join('')}</tr></thead><tbody>${Object.keys(ACOES_ROT).map(a => `<tr class="border-t border-slate-100"><td class="py-1 pr-2">${ACOES_ROT[a]}</td>${PERFIS.map(p => `<td class="text-center">${PERMISSOES[p].includes('*') || PERMISSOES[p].includes(a) ? '✓' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>
     <details class="mt-2"><summary class="text-sm text-primary cursor-pointer">Registro de ações (últimas ${aud.length})</summary><div class="mt-2 text-xs space-y-1">${aud.length ? aud.map(a => `<div class="border-t border-slate-100 pt-1"><b>${esc(a.acao)}</b> · ${esc(a.por)} · ${fmtDataHora(a.em)}${a.detalhe ? `<div class="text-slate-500">${esc(a.detalhe)}</div>` : ''}</div>`).join('') : '<p class="text-slate-500">Nada registrado ainda.</p>'}</div></details></div>`;
+}
+
+function usuForm(id) {
+  if (!exigir('usuarios.gerir')) return;
+  const u = id ? state.usuarios.find(x => x.id === id) : null; if (id && !u) return;
+  const campo = (rot, html) => `<div><label class="block text-sm font-medium mb-1">${rot}</label>${html}</div>`;
+  openModal(u ? 'Editar usuário' : 'Vincular login ao sistema', `<div class="grid gap-3">
+    ${u ? '' : `<p class="text-xs bg-sky-50 border border-sky-200 rounded-lg p-2">1) No Supabase: Authentication → Users → Add user (e-mail e senha). 2) Copie o <b>User UID</b> dele e cole abaixo. 3) Escolha o perfil.</p>
+    ${campo('User UID (do painel do Supabase)', `<input id="us-id" class="${INPUT}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000">`)}`}
+    ${campo('Nome', `<input id="us-nome" value="${esc(u ? u.nome : '')}" class="${INPUT}">`)}
+    ${campo('E-mail do login', `<input id="us-login" type="email" value="${esc(u ? u.login : '')}" ${u ? 'readonly' : ''} class="${INPUT}" autocapitalize="none">`)}
+    ${campo('Matrícula', `<input id="us-mat" value="${esc(u ? u.matricula : '')}" class="${INPUT}">`)}
+    ${campo('Perfil', `<select id="us-perfil" class="${INPUT}">${PERFIS.map(p => `<option ${u && p === u.perfil ? 'selected' : ''}>${p}</option>`).join('')}</select>`)}
+    ${campo('Setor/Coordenação', `<select id="us-setor" class="${INPUT}"><option value="">—</option>${ordenaCad(state.destinatariosCI).filter(x => x.ativo || (u && x.id === u.setor)).map(x => `<option value="${x.id}" ${u && x.id === u.setor ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select>`)}
+    <label class="flex items-center gap-2 text-sm"><input id="us-ativo" type="checkbox" class="w-5 h-5 accent-teal-700" ${!u || u.ativo ? 'checked' : ''}> Ativo (pode entrar no sistema)</label></div>`,
+    `<div class="flex gap-2">${u ? `<button onclick="usuExcluir('${u.id}')" class="${BTN} text-red-600 border border-red-200">Excluir</button>` : ''}<button onclick="closeModal()" class="${BTN_G} ml-auto">Cancelar</button><button onclick="usuSalvar('${u ? u.id : ''}')" class="${BTN_P}">Salvar</button></div>`, true);
+}
+function usuSalvar(id) {
+  if (!exigir('usuarios.gerir')) return;
+  const novo = !id, ex = id ? state.usuarios.find(x => x.id === id) : null;
+  const d = { id: novo ? $('us-id').value.trim().toLowerCase() : id, nome: $('us-nome').value.trim(), login: $('us-login').value.trim().toLowerCase(), matricula: $('us-mat').value.trim(), perfil: $('us-perfil').value, setor: $('us-setor').value, ativo: $('us-ativo').checked };
+  if (novo && !UUID_RE.test(d.id)) { toast('User UID inválido: copie o código completo do painel do Supabase', 'error'); return; }
+  if (novo && state.usuarios.some(x => x.id === d.id)) { toast('Este login já está vinculado', 'error'); return; }
+  if (!d.nome) { toast('Informe o nome', 'error'); return; }
+  if (!d.login) { toast('Informe o e-mail do login', 'error'); return; }
+  if (state.usuarios.some(x => x.id !== d.id && x.login === d.login)) { toast('Já existe um usuário com este e-mail', 'error'); return; }
+  if (!PERFIS.includes(d.perfil)) { toast('Escolha o perfil', 'error'); return; }
+  if (ex && ex.id === _perfilSb.id && (ex.perfil !== d.perfil || ex.ativo !== d.ativo)) { toast('Você não pode mudar o próprio perfil nem se desativar. Peça a outro ADMINISTRADOR.', 'error'); return; }
+  if (adminsAtivos(d.id) + (d.ativo && d.perfil === 'ADMINISTRADOR' ? 1 : 0) < 1) { toast('Precisa existir ao menos um ADMINISTRADOR ativo', 'error'); return; }
+  if (ex) Object.assign(ex, d); else state.usuarios.push(d);
+  auditar('usuario', d.id, novo ? 'usuario_vincular' : 'usuario_editar', `${d.nome} (${d.perfil}${d.ativo ? '' : ', inativo'})`);
+  save(); closeModal(); render(); toast('Usuário salvo');
+}
+function usuExcluir(id) {
+  if (!exigir('usuarios.gerir')) return;
+  const x = state.usuarios.find(i => i.id === id); if (!x) return;
+  if (id === _perfilSb.id) { toast('Você não pode excluir o próprio usuário', 'error'); return; }
+  if (x.perfil === 'ADMINISTRADOR' && x.ativo && adminsAtivos(id) < 1) { toast('Não é possível excluir o único ADMINISTRADOR ativo', 'error'); return; }
+  confirmar('Excluir usuário', `<p>Excluir o vínculo de <b>${esc(x.nome)}</b>? A pessoa deixa de entrar no sistema. O login continua existindo no painel do Supabase (apague lá também, se quiser).</p>`, () => {
+    state.usuarios = state.usuarios.filter(i => i.id !== id); auditar('usuario', id, 'usuario_excluir', x.nome); save(); closeModal(); render(); toast('Usuário excluído');
+  }, 'Excluir', true);
 }
 /* ---------- BLOCO 13: área de alertas ---------- */
 const COR_NIVEL = { ERRO: 'bg-red-50 text-red-800 border-red-200', ALERTA: 'bg-amber-50 text-amber-900 border-amber-200', 'INFORMAÇÃO': 'bg-sky-50 text-sky-800 border-sky-200' };
@@ -5850,20 +6037,25 @@ function viewConfig() {
       ${(state.feriados || []).length ? `<ul class="text-sm mb-3">${[...state.feriados].sort((a, b) => a.data < b.data ? -1 : 1).map(f => `<li class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 last:border-0"><span>${br(f.data)} — ${esc(f.nome || 'Feriado')}</span><button onclick="removerFeriado('${f.data}')" class="tt px-3 rounded-lg text-xs text-red-600 hover:bg-red-50 shrink-0">Remover</button></li>`).join('')}</ul>` : '<p class="text-sm text-slate-400 mb-3">Nenhum feriado cadastrado.</p>'}
       <button onclick="formFeriado()" class="${BTN_O}">+ Adicionar feriado</button>
     </div>
+    ${supSecaoUsuarios()}
     <div class="${CARD} p-4">
-      <h3 class="font-semibold mb-1">Diagnóstico</h3>
-      <p class="text-sm text-slate-500 mb-2">Informações úteis para suporte.</p>
-      <div class="mb-3">${(() => { let usado = 0; try { for (const k in localStorage) { if (localStorage.hasOwnProperty(k)) usado += (localStorage[k] || '').length; } } catch (e) {} const kb = v => (v / 1024).toFixed(1) + ' KB'; const meta = _lerBackupMeta(); const idade = idadeUltimoBackup(); const linhas = [['Armazenamento usado', kb(usado)], ['Última gravação', state._atualizadoEm ? fmtDataHora(state._atualizadoEm) : '—'], ['Último backup', meta.ultimo ? fmtDataHora(meta.ultimo) : '—'], ['Guardas', state.guardas.length], ['Equipes', state.equipes.length], ['Horas extras', (state.horasExtras || []).length], ['Usuários', (state.usuarios || []).length]]; return '<table class="text-xs w-full">' + linhas.map(([k, v]) => '<tr class="border-b border-slate-100"><td class="py-1 text-slate-600">' + esc(k) + '</td><td class="py-1 text-right font-medium">' + esc(String(v)) + '</td></tr>').join('') + '</table>'; })()}</div>
-      <h3 class="font-semibold mb-1">Backup</h3>
-      <p class="text-sm text-slate-500 mb-2">Os dados ficam só neste navegador. Exporte com frequência para não perder nada.</p>
-      ${(() => { const idade = idadeUltimoBackup(); if (idade === null) return '<div class="text-xs bg-sky-50 border border-sky-200 rounded-lg p-2 mb-2">Ainda não há backup automático. Ele é feito a cada 30 minutos.</div>'; const cor = idade > BACKUP_MAX_IDADE_DIAS ? 'amber' : 'emerald'; return '<div class="text-xs bg-' + cor + '-50 border border-' + cor + '-200 text-' + cor + '-900 rounded-lg p-2 mb-2">Último backup automático: <b>' + (idade === 0 ? 'hoje' : idade === 1 ? 'há 1 dia' : 'há ' + idade + ' dias') + '</b>.</div>'; })()}
+      <h3 class="font-semibold mb-1">Dados e sincronização</h3>
+      <p class="text-sm text-slate-500 mb-2">Os dados ficam no servidor (Supabase) e são compartilhados por todos os usuários. Este aparelho guarda só uma cópia para abrir mais rápido.</p>
+      <div class="mb-3">${(() => {
+        let cacheKb = 0; try { cacheKb = (localStorage.getItem(CACHE_KEY) || '').length / 1024; } catch (e) { /* sem armazenamento */ }
+        const quando = t => t ? fmtDataHora(new Date(t).toISOString()) : '—';
+        const linhas = [['Seu perfil', _perfilSb ? _perfilSb.perfil : '—'], ['Situação', (SYNC_ROT[_syncEstado] || SYNC_ROT.salvo)[1]], ['Última leitura do servidor', quando(_sync.ultimaCarga)], ['Último envio', quando(_sync.ultimoEnvio)], ['Cópia neste aparelho', cacheKb.toFixed(1) + ' KB'], ['Guardas', state.guardas.length], ['Equipes', state.equipes.length], ['Horas extras', (state.horasExtras || []).length], ['Usuários', (state.usuarios || []).length]];
+        return '<table class="text-xs w-full">' + linhas.map(([k, v]) => '<tr class="border-b border-slate-100"><td class="py-1 text-slate-600">' + esc(k) + '</td><td class="py-1 text-right font-medium">' + esc(String(v)) + '</td></tr>').join('') + '</table>'; })()}</div>
       <div class="flex flex-wrap gap-2">
+        <button onclick="confirmar('Recarregar dados do servidor','<p>Os dados são lidos de novo do servidor. Alterações que ainda não foram enviadas serão descartadas.</p>',()=>{recarregarDoServidor({forcar:true,descartar:true,avisar:true})},'Recarregar',true)" class="${BTN} bg-red-600 text-white">Recarregar dados do servidor</button>
         <button onclick="exportarJSON()" class="${BTN_P}">Exportar JSON</button>
         <button onclick="importarJSON()" class="${BTN_O}">Importar JSON</button>
-        <button onclick="confirmar('Restaurar backup','<p>O estado atual será substituído pelo último backup automático.</p>',()=>{restaurarBackup()},'Restaurar',true)" class="${BTN} bg-sky-600 text-white">Restaurar backup</button>
         ${state._backupImport ? `<button onclick="desfazerImportacao()" class="${BTN} bg-amber-500 text-white">Desfazer última importação</button>` : ''}
-        <button onclick="confirmar('Resetar dados','<p>Todas as alterações serão apagadas e a base de setembro/2026 será recarregada.</p>',()=>{state=seedState();save();render();toast('Dados resetados')},'Resetar',true)" class="${BTN} bg-red-600 text-white">Resetar dados</button>
       </div>
+      ${_perfilSb && _perfilSb.perfil === 'ADMINISTRADOR' ? `<div class="mt-4 pt-3 border-t border-slate-200">
+        <h4 class="font-semibold text-sm mb-1">Migração única</h4>
+        <p class="text-sm text-slate-500 mb-2">Se este navegador ainda guarda os dados da versão antiga (que ficavam só no aparelho), envie-os ao servidor uma vez.</p>
+        <button onclick="enviarDadosLocaisConfirmar()" class="${BTN_P}">Enviar dados deste navegador para o servidor</button></div>` : ''}
     </div></div>`;
 }
 function exportarJSON() {
@@ -5875,7 +6067,7 @@ function importarJSON() {
   openModal('Importar JSON', `
     <label class="${BTN_O} flex items-center justify-center cursor-pointer mb-3">Escolher arquivo .json<input type="file" accept=".json,application/json,text/plain" onchange="lerArquivoJSON(event)" class="hidden"></label>
     <textarea id="json-in" rows="8" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-mono" placeholder="Ou cole aqui o JSON exportado"></textarea>
-    <p class="text-xs text-slate-500 mt-2">Os dados atuais serão substituídos. Exporte um backup antes se houver algo a guardar.</p>`,
+    <p class="text-xs text-slate-500 mt-2">Os dados do <b>servidor</b> serão substituídos, para todos os usuários. Exporte um backup antes se houver algo a guardar. Usuários e auditoria não são alterados.</p>`,
     `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="processarJSON()" class="${BTN_P}">Importar</button></div>`);
 }
 function lerArquivoJSON(ev) {
@@ -5889,8 +6081,66 @@ function processarJSON() {
   try {
     const obj = JSON.parse($('json-in').value);
     if (!obj || !Array.isArray(obj.guardas) || !Array.isArray(obj.equipes)) throw new Error('faltam as listas de guardas e equipes');
-    state = normalizarEstado(obj); save(); closeModal(); render(); toast('Dados importados');
+    obj.usuarios = state.usuarios; obj.auditoria = state.auditoria;   // o vínculo de logins e o registro de ações não vêm do arquivo
+    confirmar('Substituir os dados do servidor?', `<p>Os dados atuais (${state.guardas.length} guardas, ${state.equipes.length} equipes…) serão substituídos pelos do arquivo (${obj.guardas.length} guardas, ${obj.equipes.length} equipes…), <b>para todos os usuários</b>. O que não estiver no arquivo será apagado do servidor.</p>`,
+      () => { state = normalizarEstado(obj); save(); render(); toast('Dados importados'); }, 'Substituir', true);
   } catch (e) { toast('JSON inválido: ' + e.message, 'error'); }
+}
+
+/* ---------- Envio único: dados da versão antiga (localStorage) → servidor ---------- */
+function lerLegado() {
+  for (const chave of [STORAGE_KEY, BACKUP_KEY]) {
+    try {
+      const o = JSON.parse(localStorage.getItem(chave) || 'null'), st = chave === BACKUP_KEY ? o && o.state : o;
+      if (st && Array.isArray(st.guardas) && Array.isArray(st.equipes)) return st;
+    } catch (e) { /* chave ausente ou ilegível */ }
+  }
+  return null;
+}
+function enviarDadosLocaisConfirmar() {
+  if (!_perfilSb || _perfilSb.perfil !== 'ADMINISTRADOR') { toast('Somente o ADMINISTRADOR pode enviar os dados', 'error'); return; }
+  const st = lerLegado();
+  if (!st) { toast('Este navegador não tem dados da versão antiga para enviar', 'warn'); return; }
+  const n = k => (Array.isArray(st[k]) ? st[k].length : 0);
+  confirmar('Enviar dados deste navegador?', `<p>Foram encontrados neste navegador: <b>${n('guardas')}</b> guardas, <b>${n('equipes')}</b> equipes, <b>${n('horasExtras')}</b> horas extras, <b>${n('ausencias')}</b> afastamentos, <b>${n('supervisoes')}</b> supervisões e demais cadastros.</p>
+    <p class="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs"><b>Atenção:</b> isto grava no servidor e <b>sobrescreve os registros que tiverem o mesmo id</b>. Usuários e auditoria não são enviados. Pode ser repetido sem duplicar nada.</p>`, enviarDadosLocais, 'Enviar');
+}
+async function enviarDadosLocais() {
+  const bruto = lerLegado(); if (!bruto) return;
+  const st = normalizarEstado(JSON.parse(JSON.stringify(bruto)));
+  const linhas = linhasDoEstado(st);
+  const dup = (mapa, col, rot) => { const vistos = {}, rep = []; mapa.forEach(r => { const v = r[col]; if (v == null) return; (vistos[v] = vistos[v] || []).push(r.id); }); Object.keys(vistos).forEach(v => { if (vistos[v].length > 1) rep.push(`${rot} repetido: ${v}`); }); return rep; };
+  const problemas = [...dup(linhas.guardas, 'matricula', 'Matrícula'), ...dup(linhas.equipes, 'nome', 'Nome de equipe')];
+  if (problemas.length) { openModal('Corrija antes de enviar', `<p class="text-sm mb-2">O servidor não aceita estes repetidos:</p><ul class="text-sm list-disc pl-5">${problemas.slice(0, 15).map(x => `<li>${esc(x)}</li>`).join('')}</ul>`, `<div class="flex justify-end"><button onclick="closeModal()" class="${BTN_P}">Entendi</button></div>`); return; }
+  const tabelas = TABS.filter(d => d.t !== 'usuarios' && d.t !== 'auditoria' && linhas[d.t].size);
+  const feitos = [];
+  openModal('Enviando dados…', `<div class="space-y-3"><div class="w-full h-3 bg-slate-200 rounded-full overflow-hidden"><div id="env-barra" class="h-3 bg-primary" style="width:0%"></div></div><p id="env-txt" class="text-sm text-slate-600">Preparando…</p></div>`, '');
+  _sync.pronto = false;   // enquanto envia, o envio automático fica parado
+  let erro = null;
+  try {
+    for (let i = 0; i < tabelas.length; i++) {
+      const d = tabelas[i];
+      $('env-txt').textContent = `${ROTULO_TABELA[d.t]} (${linhas[d.t].size})…`; $('env-barra').style.width = Math.round(i / tabelas.length * 100) + '%';
+      await window.sb.upsert(d.t, [...linhas[d.t].values()]);
+      feitos.push([d.t, linhas[d.t].size]);
+    }
+  } catch (e) { erro = e; }
+  _sync.pronto = true;
+  let relido = true;
+  try { state = await lerServidor(); baseDe(state); gravarCache(); _sync.ultimaCarga = Date.now(); aplicarRota(); } catch (e) { relido = false; }
+  const tabela = feitos.length ? `<table class="text-sm w-full">${feitos.map(([t, q]) => `<tr class="border-b border-slate-100"><td class="py-1">${esc(ROTULO_TABELA[t])}</td><td class="py-1 text-right font-medium">${q}</td></tr>`).join('')}</table>` : '';
+  const total = feitos.reduce((a, [, q]) => a + q, 0);
+  const aviso = erro ? `<p class="text-sm bg-red-50 border border-red-200 text-red-800 rounded-lg p-2 mb-2"><b>O envio parou</b> em ${esc(ROTULO_TABELA[(tabelas[feitos.length] || {}).t] || '—')}: ${esc(classificarErro(erro) === 'perm' ? 'seu perfil não tem permissão' : classificarErro(erro) === 'estrutura' ? 'o banco está desatualizado (rode a migracao_002.sql)' : erro.message)}. O que já foi enviado foi mantido; corrija e envie de novo.</p>` : `<p class="text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-2 mb-2"><b>Pronto:</b> ${total} registros enviados.${relido ? '' : ' (Não foi possível reler o servidor agora.)'}</p>`;
+  if (!erro) auditar('migracao', 'localStorage', 'envio_dados_locais', `${total} registros`);
+  if (!erro) save();
+  openModal(erro ? 'Envio incompleto' : 'Dados enviados', aviso + tabela + (erro ? '' : '<p class="text-xs text-slate-500 mt-3">Os dados antigos continuam neste navegador. Depois de conferir no app, você pode apagá-los (eles têm dados pessoais).</p>'),
+    `<div class="flex gap-2 justify-end">${erro ? '' : `<button onclick="apagarDadosLegados()" class="${BTN} text-red-600 border border-red-200">Apagar cópia antiga deste navegador</button>`}<button onclick="closeModal()" class="${BTN_P}">Fechar</button></div>`, true);
+}
+function apagarDadosLegados() {
+  confirmar('Apagar cópia antiga?', '<p>Remove deste navegador os dados da versão antiga (a cópia que ficava só no aparelho). Os dados do servidor não são afetados.</p>', () => {
+    [STORAGE_KEY, BACKUP_KEY, BACKUP_META_KEY, 'escalasgm_user', 'escalasGM.salt'].forEach(k => { try { localStorage.removeItem(k); } catch (e) { /* sem armazenamento */ } });
+    toast('Cópia antiga apagada');
+  }, 'Apagar', true);
 }
 
 /* ============================================================
@@ -5910,30 +6160,14 @@ document.addEventListener('touchend', e => {
 let _ultimaAtividade = Date.now();
 ['click', 'keydown', 'input', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { _ultimaAtividade = Date.now(); }, { passive: true }));
 setInterval(() => {
-  if (!sessaoUserId) return;
+  if (!_perfilSb) return;
   if (Date.now() - _ultimaAtividade > SESSAO_TIMEOUT_MS) {
     toast('Sessão expirada por inatividade', 'warn');
-    supSair();
+    sairSupabase();
   }
 }, 60 * 1000);
 
-window.addEventListener('storage', ev => {
-  if (ev.key !== STORAGE_KEY || !ev.newValue) return;
-  try {
-    const outro = JSON.parse(ev.newValue);
-    if (JSON.stringify(outro) === JSON.stringify(state)) return;
-    if (modalAberto()) { toast('Dados alterados em outra aba. Feche e recarregue para não sobrescrever.', 'warn'); return; }
-    confirmar('Dados alterados em outra aba', '<p>O app foi alterado em outra aba. Deseja recarregar para ver as mudanças?</p>', () => {
-      state = normalizarEstado(outro);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
-      render(); toast('Dados recarregados');
-    }, 'Recarregar');
-  } catch (e) {}
-});
-
-save();
 if (rotaDoHash() === 'docsup') { try { history.replaceState(null, '', '#/docs'); } catch (e) {} }   // pré-visualização não sobrevive a recarregar
-aplicarRota();
 let lastMobile = isMobile(), rt;
 window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (!isMobile() && drawerAberto()) fecharDrawer(); if (isMobile() !== lastMobile) { lastMobile = isMobile(); if (!modalAberto()) render(); } }, 200); });
 
@@ -5963,38 +6197,47 @@ function traduzErroLogin(e) {
   return 'Não foi possível entrar. Tente novamente.';
 }
 
-// Confere se o usuário autenticado tem cadastro ativo na tabela usuarios
+// Confere se o usuário autenticado tem cadastro ATIVO na tabela usuarios (sb.perfilAtual lança erro de rede/servidor)
 async function carregarPerfilSb() {
-  const { data: { user }, error: eu } = await window.sb.supa.auth.getUser();
-  if (eu && !/session/i.test(eu.message || '')) throw eu;
-  if (!user) return { ok: false, msg: 'Sua sessão expirou. Entre novamente.' };
-  const { data, error } = await window.sb.supa.from('usuarios').select('id, nome, matricula, login, perfil, ativo').eq('id', user.id).maybeSingle();
-  if (error) throw error;
-  if (!data) return { ok: false, msg: 'Seu usuário não tem cadastro no sistema. Procure a Coordenação Administrativa.' };
-  if (!data.ativo) return { ok: false, msg: 'Seu usuário está inativo. Procure a Coordenação Administrativa.' };
-  return { ok: true, perfil: data };
+  const perfil = await window.sb.perfilAtual();
+  if (!perfil) return { ok: false, msg: 'Seu usuário não tem cadastro no sistema. Procure a Coordenação Administrativa.' };
+  if (!perfil.ativo) return { ok: false, msg: 'Seu usuário está inativo. Procure a Coordenação Administrativa.' };
+  return { ok: true, perfil };
 }
 
+// O sistema nunca funciona sem perfil ativo: sai da conta e volta para a tela de login com o aviso
+async function sairComAviso(msg) {
+  _appPronta = false; _sync.pronto = false; _perfilSb = null; limparCache();
+  try { await window.sb.logout(); } catch (e) { /* já sem sessão */ }
+  mostrarTelaLogin(msg);
+}
+
+const TENTAR_DE_NOVO = '<button onclick="iniciarLoginSupabase()" class="login-btn" style="padding:0 18px">Tentar de novo</button><button onclick="sairSupabase()" class="login-btn" style="padding:0 18px;background:#64748b">Sair</button>';
 async function iniciarLoginSupabase() {
+  mostrarCarregando('Verificando acesso…');
   const pronto = window.sb || navigator.onLine ? await aguardarSupabase() : false;   // sem internet: não espera os 10s
   if (!pronto) {
     console.warn('[SEGESP-GM] supabase.js não carregou');
     mostrarTelaLogin(navigator.onLine ? MSG_SEM_SERVIDOR : MSG_SEM_INTERNET);
     return;
   }
+  let session = null;
   try {
-    const { data: { session } } = await window.sb.supa.auth.getSession();
+    ({ data: { session } } = await window.sb.supa.auth.getSession());
     _sessaoSupabase = session;
     if (!session) return mostrarTelaLogin();
     const r = await carregarPerfilSb();
-    if (!r.ok) { try { await window.sb.logout(); } catch (e) {} return mostrarTelaLogin(r.msg); }
+    if (!r.ok) return sairComAviso(r.msg);
     _perfilSb = r.perfil;
-    console.log('[SEGESP-GM] Sessão ativa:', session.user.email);
-    aplicarRota();   // atualiza menu (perfil e nome) e sai de telas que o perfil não vê
   } catch (e) {
     console.warn('[SEGESP-GM] Erro ao verificar sessão:', e && e.message);
-    mostrarTelaLogin(traduzErroLogin(e));
+    // sem internet, mas com sessão e cópia dos dados neste aparelho: abre com o que está salvo
+    const guardado = session && lerCachePerfil(session.user.id);
+    if (guardado) _perfilSb = guardado;
+    else if (session) return mostrarCarregando(navigator.onLine ? 'Não foi possível conectar ao servidor.' : MSG_SEM_INTERNET, TENTAR_DE_NOVO);   // já está logado: só oferece tentar de novo
+    else return mostrarTelaLogin(traduzErroLogin(e));
   }
+  await iniciarApp();
 }
 
 function blocoUsuarioHTML() {
@@ -6006,11 +6249,17 @@ function blocoUsuarioHTML() {
 }
 
 async function sairSupabase() {
+  if (_sync.pronto) {   // envia o que estiver pendente antes de sair
+    try { await sincronizar(); for (let i = 0; i < 20 && _sync.emVoo; i++) await new Promise(r => setTimeout(r, 250)); } catch (e) { /* segue para a conferência abaixo */ }
+    if (pendencias() && !confirm('Há alterações que ainda não foram enviadas ao servidor e serão perdidas. Sair mesmo assim?')) return;
+  }
+  limparCache();
   try { await window.sb?.logout(); } catch (e) { console.warn('[SEGESP-GM] Erro ao sair:', e && e.message); }
   location.reload();
 }
 
 function mostrarTelaLogin(erro) {
+  ocultarCarregando();
   document.getElementById('login-tela')?.remove();
   let emailSalvo = '';
   try { emailSalvo = localStorage.getItem(LEMBRAR_EMAIL_KEY) || ''; } catch (e) { /* sem armazenamento */ }
