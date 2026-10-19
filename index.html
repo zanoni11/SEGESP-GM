@@ -5384,8 +5384,10 @@ function eeDescansoOK(ee, g, k, t, o = {}) {          // mínimo de 12h entre jo
 }
 const eeReforco = c => c.tipo === 'ppc' && c.t === 'D';   // PPC de dia na própria escala: reforço, não cobertura (só o noturno é jornada trocada)
 const eeAdjuntos = ee => (ee.adjuntos || []).map(getGuarda).filter(g => g && eeEntra(ee, g));
+const eeTrocou = (ee, g, k) => { const b = eeBase(g, k); return (b === 'D' || b === 'N') && (ee.cob || []).some(c => c.g === g.id && c.k === k && c.tipo === 'sup' && c.t !== b); };   // supervisor com a jornada do dia trocada
+const eeCoringas = ee => (ee.coringas || []).map(getGuarda).filter(Boolean);
 const eeCoordPode = (ee, k) => k < ee.expediente.inicio || k > ee.expediente.fim;   // coordenador cobre supervisão só fora do recesso coletivo do expediente
-const eeEmServico = (ee, c) => { const g = getGuarda(c.g); return !!((c.adj || c.coord) && g && eeBase(g, c.k) === c.t && !eeComp(ee, g, c.k) && !eeAus(g, c.k)); };   // adjunto que assume a supervisão no próprio plantão
+const eeEmServico = (ee, c) => { const g = getGuarda(c.g); return !!((c.adj || c.coord || c.coringa) && g && eeBase(g, c.k) === c.t && !eeComp(ee, g, c.k) && !eeAus(g, c.k)); };   // adjunto que assume a supervisão no próprio plantão
 const eeNaFolga = (ee, g, k) => { const b = eeBloco(ee, g); return !!b && k >= b.bs && (!b.be || k <= b.be); };   // dia dentro da folga contínua do guarda
 function eeValida(ee, g) {                        // pendências do guarda (aviso, não impede)
   const d = ee.g[g.id] || {}, p = [], c = d.comp || []; if (!eeEntra(ee, g)) return p;
@@ -5449,7 +5451,7 @@ function eeRuaBase(ee) {
     ['D', 'N'].forEach(t => {
       if (!agentes(e.id).some(g => eeBase(g, k) === t)) return;
       const esc = ag.filter(g => eeBase(g, k) === t), pres = esc.filter(g => !eeComp(ee, g, k) && !eeAus(g, k)), s0 = sup[0], supTit = !!s0 && eeBase(s0, k) === t;
-      out.push({ key: `${e.id}|${k}|${t}`, k, t, e, esc, pres, folga: esc.filter(g => !pres.includes(g)), sup: s0, supTit, supOk: !supTit || (!eeComp(ee, s0, k) && !eeAus(s0, k)), falta: Math.max(0, ee.minimo.agentes - pres.length) });
+      out.push({ key: `${e.id}|${k}|${t}`, k, t, e, esc, pres, folga: esc.filter(g => !pres.includes(g)), sup: s0, supTit, supOk: !supTit || (!eeComp(ee, s0, k) && !eeAus(s0, k) && !eeTrocou(ee, s0, k)), falta: Math.max(0, ee.minimo.agentes - pres.length) });
     }); }));
   return out;
 }
@@ -5536,7 +5538,7 @@ function eeResumo(ee) {
     inval: gs.filter(g => eeValida(ee, g).length).length, rep: gs.filter(g => (D(g).h === 'N' || D(g).h === 'A') && D(g).grupo === D(g).h).length, inv: gs.filter(g => (D(g).h === 'N' || D(g).h === 'A') && D(g).grupo && D(g).grupo !== D(g).h).length,
     semHist: gs.filter(g => !D(g).h).length, turnos: R.length, pend: R.filter(x => x.pend).length, ppc: R.reduce((a, x) => a + x.ppc.filter(c => !eeReforco(c)).length, 0), ppcD: R.reduce((a, x) => a + x.ppc.filter(eeReforco).length, 0), extras: R.reduce((a, x) => a + x.ex.length, 0),
     supCob: R.filter(x => x.sc.some(c => c.g)).length, supSem: R.filter(x => x.supSem).length,
-    supRod: gs.filter(g => g.funcao === 'supervisor').length, compInv: gs.filter(g => eeCompInvalida(ee, g)).length, supExtras: (ee.cob || []).filter(c => c.tipo === 'sup' && c.g && !eeEmServico(ee, c)).length, R };
+    supRod: gs.filter(g => g.funcao === 'supervisor').length, compInv: gs.filter(g => eeCompInvalida(ee, g)).length, supExtras: (ee.cob || []).filter(c => c.tipo === 'sup' && c.g && !eeEmServico(ee, c) && !c.troca).length, R };
 }
 function viewEspecial() {
   _eeMemo = {}; const ee = eeAtual(), pode = can('especial.editar');
@@ -5614,8 +5616,8 @@ function eeSupDados(ee) {
   return ord.map(g => {
     const d = ee.g[g.id] || {}, cod = dias.map(k => ({ k, ...eeCod(ee, g, k) }));
     const proprios = cod.filter(r => r.c === 'D' || r.c === 'N');
-    const cobre = (ee.cob || []).filter(c => c.tipo === 'sup' && c.g === g.id).sort((a, b) => (a.k + a.t).localeCompare(b.k + b.t)).map(c => ({ k: c.k, t: c.t, eq: eq(c.eq) }));
-    const cobertoPor = R.filter(x => x.supTit && x.sup && x.sup.id === g.id && !x.supOk).map(x => { const c = x.sc.find(c => c.g); return { k: x.k, t: x.t, por: c ? eeNome(getGuarda(c.g)) + (c.adj ? ' (adjunto)' : c.coord ? ' (coordenador)' : '') : '', key: x.key }; });
+    const cobre = (ee.cob || []).filter(c => c.tipo === 'sup' && c.g === g.id).sort((a, b) => (a.k + a.t).localeCompare(b.k + b.t)).map(c => ({ k: c.k, t: c.t, eq: eq(c.eq), troca: !!c.troca }));
+    const cobertoPor = R.filter(x => x.supTit && x.sup && x.sup.id === g.id && !x.supOk).map(x => { const c = x.sc.find(c => c.g); return { k: x.k, t: x.t, por: c ? eeNome(getGuarda(c.g)) + (c.troca ? ' (jornada trocada)' : c.adj ? ' (adjunto)' : c.coord ? ' (coordenador)' : c.coringa ? ' (coringa)' : '') : '', key: x.key }; });
     const trabEm = ks => ks.some(k => eeTrab(eeCod(ee, g, k)));
     return { g, equipe: eq(g.equipeId), cod, proprios, cobre, cobertoPor, comp: (d.comp || []).length, bloco: eeBloco(ee, g), natal: trabEm(ee.natal.dias), anoNovo: trabEm(ee.anoNovo.dias) };
   });
@@ -5627,7 +5629,7 @@ function eeSupDia(ee, S) {                                // supervisores em ser
 function eeAbaSup(ee) {
   const S = eeSupDados(ee), dias = eeDias(ee), PD = eeSupDia(ee, S), fer = new Set([...ee.natal.dias, ...ee.anoNovo.dias]), turno = t => t === 'D' ? 'diurno' : 'noturno';
   if (!S.length) return `<div class="${CARD} p-4 text-sm text-slate-500">Nenhum supervisor no rodízio.</div>`;
-  const cel = r => { const [bg, fg, tx] = EE_CEL[r.c] || EE_CEL.F; return `<td style="background:${bg};color:${fg}" class="text-center font-bold border border-slate-200 px-0.5">${tx}${r.t && (r.c === 'C' || r.c === 'X') ? `<sub class="font-normal">${r.t}</sub>` : ''}</td>`; };
+  const cel = r => { const [bg, fg, tx] = EE_CEL[r.c] || EE_CEL.F; return `<td style="background:${bg};color:${fg}" class="text-center font-bold border border-slate-200 px-0.5">${tx}${r.t && (r.c === 'C' || r.c === 'X' || r.c === 'J') ? `<sub class="font-normal">${r.t}</sub>` : ''}</td>`; };
   const cab = k => { const d = parseISO(k); return `<th class="px-0.5 font-medium ${fer.has(k) ? 'text-red-700' : 'text-slate-500'}">${EE_DS[d.getDay()]}<br>${p2(d.getDate())}/${p2(d.getMonth() + 1)}</th>`; };
   const grade = `<details class="${CARD} p-3 mb-3"><summary class="cursor-pointer font-semibold text-sm">Grade dos supervisores</summary><div class="overflow-x-auto mt-2"><table class="text-[10px] border-collapse"><thead><tr><th class="text-left pr-2">Supervisor</th>${dias.map(cab).join('')}</tr></thead><tbody>
     ${S.map(s => `<tr><td class="pr-2 whitespace-nowrap font-semibold">${esc(eeNome(s.g))}</td>${s.cod.map(cel).join('')}</tr>`).join('')}
@@ -5638,7 +5640,7 @@ function eeAbaSup(ee) {
       <div class="flex gap-1 text-[10px]"><span class="px-1.5 rounded ${s.natal ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-500'}">Natal: ${s.natal ? 'trabalha' : 'folga'}</span><span class="px-1.5 rounded ${s.anoNovo ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-500'}">Ano Novo: ${s.anoNovo ? 'trabalha' : 'folga'}</span></div></div>
     <div class="grid grid-cols-3 gap-2 text-center my-2"><div><div class="font-bold">${s.proprios.length}</div><div class="text-[10px] text-slate-500">plantões no ciclo</div></div><div><div class="font-bold ${s.cobre.length ? 'text-amber-700' : ''}">${s.cobre.length}</div><div class="text-[10px] text-slate-500">coberturas extra</div></div><div><div class="font-bold">${s.comp}</div><div class="text-[10px] text-slate-500">compensadas</div></div></div>
     <div class="text-[11px] text-slate-700 space-y-0.5"><div><b>Trabalha:</b> ${lista(s.proprios, r => `${eeDia(r.k)} ${r.c}`)}</div>
-      <div><b>Cobre (extra):</b> ${lista(s.cobre, c => `${eeDia(c.k)} ${turno(c.t)} · ${esc(c.eq)}${eeNaFolga(ee, s.g, c.k) ? ' <b class="text-red-700">⚠ na folga contínua</b>' : ''}`)}</div>
+      <div><b>Cobre:</b> ${lista(s.cobre, c => `${eeDia(c.k)} ${turno(c.t)} · ${esc(c.eq)}${c.troca ? ' (jornada trocada)' : ' (extra)'}${eeNaFolga(ee, s.g, c.k) ? ' <b class="text-red-700">⚠ na folga contínua</b>' : ''}`)}</div>
       <div><b>Coberto por:</b> ${lista(s.cobertoPor, c => `${eeDia(c.k)} ${turno(c.t)} · ${c.por ? esc(c.por) : `<button onclick="eeFormPlantao('${c.key}')" class="text-amber-700 font-semibold underline">a definir</button>`}`)}</div>
       <div><b>Folga contínua:</b> ${s.bloco && s.bloco.be ? `${brCurto(parseISO(s.bloco.bs))} a ${brCurto(parseISO(s.bloco.be))} (${s.bloco.len} dias) · retorno ${eeDia(s.bloco.ret)}` : '—'}</div></div></div>`).join('');
   const R = eeRuaDados(ee), pend = R.filter(x => x.supSem), cobAdj = (ee.cob || []).filter(c => c.tipo === 'sup' && c.adj && c.g), adj = eeAdjuntos(ee);
@@ -5648,7 +5650,20 @@ function eeAbaSup(ee) {
     ${adj.length ? adj.map(g => { const cs = cobAdj.filter(c => c.g === g.id); return `<div class="text-[11px] border-t border-slate-100 py-1"><b>${esc(eeNome(g))}</b> <span class="text-slate-500">${esc((getEquipe(g.equipeId) || {}).nome || '')}</span> · ${cs.length ? cs.map(c => `${eeDia(c.k)} ${turno(c.t)} ${esc((getEquipe(c.eq) || {}).nome || '')} ${eeEmServico(ee, c) ? '(em serviço)' : '(extra)'}`).join(' · ') : 'sem coberturas'}</div>`; }).join('') : '<p class="text-[11px] text-slate-500">Nenhum adjunto indicado. Toque em Editar para escolher os guardas que podem assumir a supervisão.</p>'}</div>`;
   const cobCoord = (ee.cob || []).filter(c => c.tipo === 'sup' && c.coord && c.g);
   const coordHTML = cobCoord.length ? `<div class="${CARD} p-3 mb-3"><b class="text-sm">Coberturas por coordenadores</b>${cobCoord.sort((a, b) => (a.k + a.t).localeCompare(b.k + b.t)).map(c => `<div class="text-[11px] border-t border-slate-100 py-1"><b>${esc(eeNome(getGuarda(c.g)))}</b> · ${eeDia(c.k)} ${turno(c.t)} · ${esc((getEquipe(c.eq) || {}).nome || '')} ${eeEmServico(ee, c) ? '(no expediente)' : '(extra)'}</div>`).join('')}</div>` : '';
-  return pendHTML + adjHTML + coordHTML + grade + cards;
+  const corHTML = `<div class="${CARD} p-3 mb-3"><div class="flex justify-between items-center mb-1"><b class="text-sm">Supervisores coringa</b><button onclick="eeFormCoringas()" class="${BTN_G} !py-1 !px-2 text-xs">Editar</button></div>
+    ${eeCoringas(ee).length ? eeCoringas(ee).map(g => { const cs = (ee.cob || []).filter(c => c.tipo === 'sup' && c.g === g.id); return `<div class="text-[11px] border-t border-slate-100 py-1"><b>${esc(eeNome(g))}</b> · ${cs.length ? cs.map(c => `${eeDia(c.k)} ${turno(c.t)} ${esc((getEquipe(c.eq) || {}).nome || '')}${c.troca ? ' (jornada trocada)' : ''}`).join(' · ') : 'sem coberturas'}</div>`; }).join('') : '<p class="text-[11px] text-slate-500">Nenhum coringa. Coringa é o supervisor que, estando de serviço no dia, pode supervisionar qualquer equipe de dia ou de noite.</p>'}</div>`;
+  return pendHTML + corHTML + adjHTML + coordHTML + grade + cards;
+}
+function eeFormCoringas() {
+  const ee = eeAtual(), sel = new Set(ee.coringas || []), gs = state.guardas.filter(g => g.funcao === 'supervisor');
+  openModal('Supervisores coringa', `<p class="text-xs text-slate-500 mb-2">O coringa, quando estiver de serviço no dia, aparece como opção para supervisionar qualquer equipe no diurno ou no noturno (com a jornada trocada, se for o caso), sem extra.</p>${gs.map(g => `<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" class="ee-cor" value="${g.id}" ${sel.has(g.id) ? 'checked' : ''}> ${esc(eeNome(g))} <span class="text-[11px] text-slate-500">${esc((getEquipe(g.equipeId) || {}).nome || '')}</span></label>`).join('')}`,
+    `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="eeSalvarCoringas()" class="${BTN_P}">Salvar</button></div>`, true);
+}
+function eeSalvarCoringas() {
+  const ee = eeAtual(); if (!exigir('especial.editar')) return;
+  ee.coringas = [...document.querySelectorAll('.ee-cor:checked')].map(i => i.value);
+  (ee.cob || []).forEach(c => { if (c.coringa && !ee.coringas.includes(c.g)) { c.g = ''; delete c.coringa; delete c.troca; } });
+  closeModal(); eeSalvar(ee, true);
 }
 function eeFormAdjuntos() {
   const ee = eeAtual(), sel = new Set(ee.adjuntos || []);
@@ -5733,17 +5748,20 @@ function eeFormPlantao(key) {
   const ee = eeAtual(), x = eeRuaDados(ee).find(s => s.key === key); if (!x) return;
   const usado = new Set((ee.cob || []).filter(c => c.k === x.k && c.g).map(c => c.g)), pool = eePool(ee).filter(p => eeBase(p, x.k) === 'D' && !eeComp(ee, p, x.k) && !eeAus(p, x.k) && !usado.has(p.id));
   const livre = g => eeBase(g, x.k) === 'F' && !eeNaFolga(ee, g, x.k) && !usado.has(g.id) && !eeAus(g, x.k) && eeDescansoOK(ee, g, x.k, x.t);
-  const sups = eeEquipesRua().flatMap(e => supervisores(e.id)).filter(s => s.id !== (x.sup || {}).id && livre(s));
+  const sups = eeEquipesRua().flatMap(e => supervisores(e.id)).filter(s => s.id !== (x.sup || {}).id && livre(s) && !(ee.coringas || []).includes(s.id));
   const adjs = eeAdjuntos(ee), adjServ = adjs.filter(g => g.equipeId === x.e.id && eeTurnoDe(ee, g, x.k) === x.t && !usado.has(g.id)), adjFolga = adjs.filter(livre);
-  const coords = eeCoordPode(ee, x.k) ? state.guardas.filter(g => g.funcao === 'coordenador' && !usado.has(g.id) && !eeAus(g, x.k) && eeDescansoOK(ee, g, x.k, x.t)) : [];
+  const coords = x.t === 'D' && eeCoordPode(ee, x.k) ? state.guardas.filter(g => g.funcao === 'coordenador' && !usado.has(g.id) && !eeAus(g, x.k) && eeDescansoOK(ee, g, x.k, x.t)) : [];
+  const trab = g => ['D', 'N'].includes(eeBase(g, x.k)) && !eeComp(ee, g, x.k) && !eeAus(g, x.k) && !usado.has(g.id) && eeDescansoOK(ee, g, x.k, x.t, { troca: true });
+  const cor = eeCoringas(ee), corIds = new Set(cor.map(g => g.id)), coringaServ = cor.filter(trab);
+  const trocaN = x.t === 'N' ? eeEquipesRua().flatMap(e => supervisores(e.id)).filter(g => !corIds.has(g.id) && g.id !== (x.sup || {}).id && eeBase(g, x.k) === 'D' && trab(g)) : [];
   const coordServ = coords.filter(g => eeBase(g, x.k) === x.t), coordExtra = coords.filter(g => eeBase(g, x.k) !== x.t);
   const opt = g => `<option value="${g.id}">${esc(eeNome(g))} — ${esc((getEquipe(g.equipeId) || {}).nome || '')}</option>`, grp = (rot, l) => l.length ? `<optgroup label="${rot}">${l.map(opt).join('')}</optgroup>` : '';
   const cb = x.ppc.concat(x.sc, x.ex), nm = c => c.g ? eeNome(getGuarda(c.g)) : 'vaga de extra';
   openModal(`${eeDia(x.k)} · ${x.t === 'D' ? 'diurno' : 'noturno'} · ${x.e.nome}`, `<div class="text-sm space-y-2"><div>Titulares presentes: <b>${x.pres.length}</b> de ${x.esc.length}${x.folga.length ? ` (em folga: ${esc(x.folga.map(eeNome).join(', '))})` : ''}. Precisa de ${ee.minimo.agentes} agentes${x.supTit ? ' + supervisor' : ''}.</div>
     ${x.supTit ? `<div>Supervisor: ${x.supOk ? esc(eeNome(x.sup)) + ' ✔' : `<b>${esc(eeNome(x.sup))} de folga</b>`}</div>` : ''}
-    <div class="font-medium">Reforços e coberturas deste plantão</div>${cb.length ? cb.map(c => `<div class="flex justify-between items-center border-b border-slate-100 py-1"><span>${c.tipo === 'ppc' ? (eeReforco(c) ? 'Reforço PPC (escala própria)' : 'PPC (jornada trocada)') : c.tipo === 'sup' ? (c.adj || c.coord ? `${c.coord ? 'Coordenador' : 'Adjunto'} (${eeEmServico(ee, c) ? (c.coord ? 'no expediente' : 'em serviço') : 'extra'})` : c.g ? 'Supervisor (extra)' : 'Supervisor') : 'Extra'}: ${c.tipo === 'sup' && !c.g ? '<b class="text-amber-700">a definir</b>' : esc(nm(c))}${c.m ? ' <span class="text-[10px] px-1 rounded bg-slate-200">manual</span>' : ''}</span><button onclick="eeRemCob('${c.id}','${key}')" class="${BTN_G} !h-8">Remover</button></div>`).join('') : '<div class="text-xs text-slate-500">Nenhuma.</div>'}
+    <div class="font-medium">Reforços e coberturas deste plantão</div>${cb.length ? cb.map(c => `<div class="flex justify-between items-center border-b border-slate-100 py-1"><span>${c.tipo === 'ppc' ? (eeReforco(c) ? 'Reforço PPC (escala própria)' : 'PPC (jornada trocada)') : c.tipo === 'sup' ? (c.troca ? `${c.coringa ? 'Coringa' : 'Supervisor'} (jornada trocada para ${c.t === 'N' ? 'a noite' : 'o dia'})` : c.adj || c.coord || c.coringa ? `${c.coord ? 'Coordenador' : c.coringa ? 'Coringa' : 'Adjunto'} (${eeEmServico(ee, c) ? (c.coord ? 'no expediente' : 'em serviço') : 'extra'})` : c.g ? 'Supervisor (extra)' : 'Supervisor') : 'Extra'}: ${c.tipo === 'sup' && !c.g ? '<b class="text-amber-700">a definir</b>' : esc(nm(c))}${c.m ? ' <span class="text-[10px] px-1 rounded bg-slate-200">manual</span>' : ''}</span><button onclick="eeRemCob('${c.id}','${key}')" class="${BTN_G} !h-8">Remover</button></div>`).join('') : '<div class="text-xs text-slate-500">Nenhuma.</div>'}
     <div class="font-medium pt-2">Adicionar</div><div class="flex gap-2"><select id="ep-ppc" class="${INPUT}"><option value="">${x.t === 'D' ? 'PPC de serviço no dia (reforço)…' : 'PPC disponível (jornada trocada para a noite)…'}</option>${pool.map(p => `<option value="${p.id}">${esc(eeNome(p))} — ${esc(getEquipe(p.equipeId).nome)}</option>`).join('')}</select><button onclick="eeAddCob('${key}','ppc')" class="${BTN_P}">+</button></div>
-    ${x.supTit ? `<div class="flex gap-2"><select id="ep-sup" class="${INPUT}"><option value="">Quem cobre o supervisor…</option>${grp('Supervisores de folga (extra)', sups)}${grp('Adjunto em serviço nesta equipe (sem extra)', adjServ)}${grp('Adjuntos de folga (extra)', adjFolga)}${grp('Coordenadores no expediente (sem extra)', coordServ)}${grp('Coordenadores (extra)', coordExtra)}</select><button onclick="eeAddCob('${key}','sup')" class="${BTN_P}">+</button></div>` : ''}
+    ${x.supTit ? `<div class="flex gap-2"><select id="ep-sup" class="${INPUT}"><option value="">Quem cobre o supervisor…</option>${grp('Supervisor coringa de serviço no dia (sem extra)', coringaServ)}${grp('Supervisor de dia passa para a noite (a equipe dele fica a definir no diurno)', trocaN)}${grp('Supervisores de folga (extra)', sups)}${grp('Adjunto em serviço nesta equipe (sem extra)', adjServ)}${grp('Adjuntos de folga (extra)', adjFolga)}${grp('Coordenadores no expediente (sem extra)', coordServ)}${grp('Coordenadores (extra)', coordExtra)}</select><button onclick="eeAddCob('${key}','sup')" class="${BTN_P}">+</button></div>` : ''}
     <button onclick="eeAddCob('${key}','extra')" class="${BTN_G}">+ Vaga de extra (a preencher)</button></div>`, `<div class="flex justify-end"><button onclick="closeModal()" class="${BTN_P}">Fechar</button></div>`, true);
 }
 function eeAddCob(key, tipo) {
@@ -5752,6 +5770,8 @@ function eeAddCob(key, tipo) {
   if (tipo === 'sup') ee.cob = ee.cob.filter(c => !(c.eq === eq && c.k === k && c.t === t && c.tipo === 'sup'));
   const novo = { id: uid('cb'), k, t, eq, tipo, g: gid, m: true }; if (tipo === 'sup' && (ee.adjuntos || []).includes(gid)) novo.adj = true;
   if (tipo === 'sup' && (getGuarda(gid) || {}).funcao === 'coordenador') novo.coord = true;
+  if (tipo === 'sup' && (ee.coringas || []).includes(gid)) novo.coringa = true;
+  if (tipo === 'sup') { const g = getGuarda(gid), b = g && eeBase(g, k); if (g && (b === 'D' || b === 'N') && b !== t && !eeComp(ee, g, k) && !eeAus(g, k)) novo.troca = true; }
   ee.cob.push(novo); closeModal(); eeSalvar(ee, true); eeFormPlantao(key);
 }
 function eeRemCob(id, key) {
@@ -5821,18 +5841,18 @@ const DOC_CSS_EE = `
 .ee-sec{margin-top:10px;break-before:page;page-break-before:always}.ee-sec h3{margin:0 0 4px;font-size:12px;color:#173b66}
 `;
 const EE_CEL = { D: ['#cfe3f7', '#12467d', 'D'], N: ['#2f3e55', '#ffffff', 'N'], C: ['#b8e0b9', '#14532d', 'C'], FB: ['#e6f4e7', '#7da07f', '·'], F: ['#ffffff', '#9aa5b4', ''],
-  P: ['#ffe3a3', '#7a4b00', 'P'], CI: ['#f9d3d3', '#8a1c1c', 'C!'], X: ['#e1d3f2', '#4b2a75', 'S'], A: ['#f9d3d3', '#8a1c1c', 'A'], FC: ['#e5e7eb', '#374151', 'FC'], E: ['#eef2f7', '#475569', 'E'] };
+  P: ['#ffe3a3', '#7a4b00', 'P'], J: ['#fde68a', '#78350f', 'J'], CI: ['#f9d3d3', '#8a1c1c', 'C!'], X: ['#e1d3f2', '#4b2a75', 'S'], A: ['#f9d3d3', '#8a1c1c', 'A'], FC: ['#e5e7eb', '#374151', 'FC'], E: ['#eef2f7', '#475569', 'E'] };
 function eeCod(ee, g, k) {                          // código de cada dia na grade
   const d = ee.g[g.id] || {}, base = eeBase(g, k);
   if (eeExped(g)) return k >= ee.expediente.inicio && k <= ee.expediente.fim ? { c: 'FC' } : { c: base === 'D' ? 'E' : 'F' };
   if (!eeEntra(ee, g)) return { c: base === 'D' || base === 'N' ? base : 'F' };
   if (eeAus(g, k)) return { c: 'A' };
   if ((d.comp || []).includes(k)) return base === 'D' || base === 'N' ? { c: 'C', t: base } : { c: 'CI' };   // CI: compensada em dia que não é plantão (escala do guarda mudou)
-  const cb = (ee.cob || []).find(c => c.g === g.id && c.k === k); if (cb && !eeEmServico(ee, cb) && !eeReforco(cb)) return { c: cb.tipo === 'sup' ? 'X' : 'P', t: cb.t };
+  const cb = (ee.cob || []).find(c => c.g === g.id && c.k === k); if (cb && !eeEmServico(ee, cb) && !eeReforco(cb)) return { c: cb.tipo !== 'sup' ? 'P' : cb.troca ? 'J' : 'X', t: cb.t };
   if (base === 'D' || base === 'N') return { c: base };
   const b = eeBloco(ee, g); return { c: b && k >= b.bs && (!b.be || k <= b.be) ? 'FB' : 'F' };
 }
-const eeCelHTML = r => { const [bg, fg, tx] = EE_CEL[r.c] || EE_CEL.F; return `<td style="background:${bg};color:${fg};font-weight:700">${tx}${r.t && (r.c === 'C' || r.c === 'P' || r.c === 'X') ? `<i>${r.t}</i>` : ''}</td>`; };
+const eeCelHTML = r => { const [bg, fg, tx] = EE_CEL[r.c] || EE_CEL.F; return `<td style="background:${bg};color:${fg};font-weight:700">${tx}${r.t && (r.c === 'C' || r.c === 'P' || r.c === 'X' || r.c === 'J') ? `<i>${r.t}</i>` : ''}</td>`; };
 function eeFolhaHTML(ee) {
   _eeMemo = {}; const dias = eeDias(ee), D = g => ee.g[g.id] || {}, fer = new Set([...ee.natal.dias, ...ee.anoNovo.dias]), R = eeRuaDados(ee), sh = k => brCurto(parseISO(k));
   const cab = k => { const d = parseISO(k), c = fer.has(k) ? 'ee-fer' : (d.getDay() === 0 || d.getDay() === 6 ? 'ee-fds' : ''); return `<th class="${c}">${EE_DS[d.getDay()]}<br>${p2(d.getDate())}/${p2(d.getMonth() + 1)}</th>`; };
@@ -5849,9 +5869,9 @@ function eeFolhaHTML(ee) {
   const rua = e => (e && e.grupo === 'Operacional') ? e.id : '';
   const tabelas = un.map(u => { const n = u.membros.filter(g => D(g).grupo === 'N').length, a = u.membros.filter(g => D(g).grupo === 'A').length, eq = u.grupo === 'Operacional' ? (state.equipes.find(e => e.nome === u.chave) || {}).id : '';
     return tabela(u.grupo === 'Operacional' ? `Equipe ${u.nome} (com Almoxarifado)` : u.nome, `Natal ${n} · Ano Novo ${a}`, u.membros, false, rua(state.equipes.find(e => e.id === eq))); }).join('') + (exp.length ? tabela('Expediente', `folga coletiva de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}`, exp, true) : '');
-  const leg = [['D', 'Trabalho diurno'], ['N', 'Trabalho noturno'], ['C', 'Escala compensada (folga do recesso) — a letra pequena é o turno'], ['·', 'Folga normal do ciclo dentro da folga contínua'], ['C!', 'Compensada em dia que não é plantão do guarda (a escala dele mudou) — refazer as compensadas'], ['P', 'PPC com jornada trocada para o noturno (o PPC de dia na própria escala é reforço e aparece como D)'], ['S', 'Supervisor cobrindo (extra)'], ['A', 'Ausência (férias, atestado etc.)'], ['FC', 'Folga coletiva do expediente'], ['E', 'Expediente']];
-  const cor = { D: 'D', N: 'N', C: 'C', 'C!': 'CI', '·': 'FB', P: 'P', S: 'X', A: 'A', FC: 'FC', E: 'E' };
-  const quadro = `<div class="ee-sec"><h3>Plantões das equipes de rua — mínimo de ${ee.minimo.agentes} agentes + supervisor</h3><table class="ee-q"><thead><tr><th>Data</th><th>Turno</th><th>Equipe</th><th>Titulares</th><th>Em folga</th><th>PPC (reforço D / jornada trocada N)</th><th>Supervisor</th><th>Agentes</th></tr></thead><tbody>${R.map(x => { const sc = x.sc[0], sup = !x.supTit ? '' : x.supOk ? esc(eeNome(x.sup)) : (sc && sc.g ? `${esc(eeNome(getGuarda(sc.g)))} (${sc.coord ? 'coordenador' : sc.adj ? 'adjunto' : 'extra'})` : '<span class="ee-vm">A DEFINIR</span>');
+  const leg = [['D', 'Trabalho diurno'], ['N', 'Trabalho noturno'], ['C', 'Escala compensada (folga do recesso) — a letra pequena é o turno'], ['·', 'Folga normal do ciclo dentro da folga contínua'], ['J', 'Supervisor com a jornada do dia trocada (a letra pequena é o turno que faz)'], ['C!', 'Compensada em dia que não é plantão do guarda (a escala dele mudou) — refazer as compensadas'], ['P', 'PPC com jornada trocada para o noturno (o PPC de dia na própria escala é reforço e aparece como D)'], ['S', 'Supervisor cobrindo (extra)'], ['A', 'Ausência (férias, atestado etc.)'], ['FC', 'Folga coletiva do expediente'], ['E', 'Expediente']];
+  const cor = { D: 'D', N: 'N', C: 'C', 'C!': 'CI', J: 'J', '·': 'FB', P: 'P', S: 'X', A: 'A', FC: 'FC', E: 'E' };
+  const quadro = `<div class="ee-sec"><h3>Plantões das equipes de rua — mínimo de ${ee.minimo.agentes} agentes + supervisor</h3><table class="ee-q"><thead><tr><th>Data</th><th>Turno</th><th>Equipe</th><th>Titulares</th><th>Em folga</th><th>PPC (reforço D / jornada trocada N)</th><th>Supervisor</th><th>Agentes</th></tr></thead><tbody>${R.map(x => { const sc = x.sc[0], sup = !x.supTit ? '' : x.supOk ? esc(eeNome(x.sup)) : (sc && sc.g ? `${esc(eeNome(getGuarda(sc.g)))} (${sc.troca ? 'jornada trocada' : sc.coord ? 'coordenador' : sc.adj ? 'adjunto' : sc.coringa ? 'coringa' : 'extra'})` : '<span class="ee-vm">A DEFINIR</span>');
     return `<tr class="${x.pend ? 'ee-pd' : ''}"><td>${eeDia(x.k)}</td><td>${x.t === 'D' ? 'Diurno' : 'Noturno'}</td><td>${esc(x.e.nome)}</td><td>${x.pres.length}</td><td>${esc(x.folga.map(eeNome).join(', ')) || '—'}</td><td>${esc(x.ppc.map(c => eeNome(getGuarda(c.g))).join(', ')) || '—'}</td><td>${sup || '—'}</td><td>${x.total}/${ee.minimo.agentes}${x.ex.length ? ` <span class="ee-vm">(${x.ex.length} extra a preencher)</span>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
   const moto = eeMoto(ee), motoQ = `<div class="ee-sec"><h3>ROMU e GTAM</h3><table class="ee-q"><thead><tr><th>Data</th><th>ROMU presentes</th><th>GTAM presentes</th><th>Orientação</th></tr></thead><tbody>${moto.map(x => `<tr class="${(x.ro.n && x.ro.p <= 1) || (x.gt.n && x.gt.p <= 1) ? 'ee-pd' : ''}"><td>${eeDia(x.k)}</td><td>${x.ro.p}/${x.ro.n}</td><td>${x.gt.p}/${x.gt.n}</td><td>${esc(x.sug)}</td></tr>`).join('')}</tbody></table></div>`;
   const S = eeSupDados(ee), PD = eeSupDia(ee, S), tn = t => t === 'D' ? 'D' : 'N', simNao = v => v ? 'trabalha' : 'folga';
