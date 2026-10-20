@@ -176,12 +176,36 @@ const srv = http.createServer((req, res) => { const f = path.join(RAIZ, decodeUR
     const pdf = await page.evaluate(() => { const h = eeFolhaHTML(eeAtual()); return { rasc: /RASCUNHO/.test(h), grade: /Cobertura operacional por data e turno/.test(h), def: /Déficits e necessidades potenciais/.test(h), teste: /MODO DE TESTE LOCAL/.test(h) }; }); ok(pdf.rasc && pdf.grade && pdf.def && pdf.teste, 'PDF (impressão) traz a situação, a grade e os déficits', pdf); await ctx.close(); }
 
   titulo('E12. Telas legíveis no celular (sem rolagem horizontal da página) e no computador');
-  for (const w of [390, 1280]) { const { ctx, page } = await nova(); await page.setViewportSize({ width: w, height: 900 }); const r = await page.evaluate(() => { const out = {}; ['resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; eeF.dia = t === 'grade' ? '2026-12-24' : ''; render(); out[t] = document.documentElement.scrollWidth - document.documentElement.clientWidth; }); return out; });
+  for (const w of [390, 1280]) { const { ctx, page } = await nova(); await page.setViewportSize({ width: w, height: 900 }); const r = await page.evaluate(() => { const out = {}; ['dia', 'resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; eeF.dia = t === 'grade' ? '2026-12-24' : ''; render(); out[t] = document.documentElement.scrollWidth - document.documentElement.clientWidth; }); return out; });
     ok(Object.values(r).every(v => v <= 1), `largura ${w}px: nenhuma aba estoura a largura da página`, r); await ctx.close(); }
 
   titulo('E13. Quem só consulta não grava nada ao abrir a Escala Especial (sem escrita espúria)');
-  { const { ctx, page } = await nova(); const r = await page.evaluate(() => { const ee = eeAtual(), antes = JSON.stringify(state.escalasEspeciais); _perfilSb = Object.assign({}, _perfilSb, { perfil: 'OPERACIONAL' }); ['resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; render(); }); eeLinhaDetalhe(eeAnalise(ee).gr.dias[0].linhas[0].id); closeModal(); return { igual: antes === JSON.stringify(state.escalasEspeciais), pode: can('especial.editar'), toast: document.getElementById('toasts').innerText }; });
+  { const { ctx, page } = await nova(); const r = await page.evaluate(() => { const ee = eeAtual(), antes = JSON.stringify(state.escalasEspeciais); _perfilSb = Object.assign({}, _perfilSb, { perfil: 'OPERACIONAL' }); ['dia', 'resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; render(); }); eeLinhaDetalhe(eeAnalise(ee).gr.dias[0].linhas[0].id); closeModal(); return { igual: antes === JSON.stringify(state.escalasEspeciais), pode: can('especial.editar'), toast: document.getElementById('toasts').innerText }; });
     ok(r.igual && !r.pode, 'abrir todas as abas como OPERACIONAL não altera a escala', r); await ctx.close(); }
+
+  titulo('E14. Aba Dia: serviço do dia com horários e edição com efeito imediato');
+  { const { ctx, page } = await nova(); const r = await page.evaluate(() => {
+      const ee = eeAtual(); eeAbrir(ee.id); const out = { tab: eeTab, k: eeDiaSel }, a = eeAnalise(ee), S = eeServicoDoDia(ee, eeDiaSel), trab = [...S.D, ...S.N, ...S.exp];
+      out.n = trab.length; out.semHorario = trab.filter(p => !p.hor || !p.hor[0]).map(p => p.g.nomeCompleto);
+      out.duplicados = trab.length - new Set(trab.map(p => p.g.id)).size; out.texto = document.getElementById('main').innerText;
+      const falta = []; a.gr.dias.find(d => d.k === eeDiaSel).linhas.filter(l => l.linha === 'area').forEach(l => l.pessoas.filter(p => p.sit === 'servico').forEach(p => { if (!S[l.turno].some(x => x.g.id === p.gid)) falta.push(p.nome + ' ' + l.turno); }));
+      out.faltantes = falta; out.tiraDias = document.querySelectorAll('#ee-dias-tira button').length; out.dias = a.gr.dias.length;
+      return out; });
+    ok(r.tab === 'dia' && /Diurno/.test(r.texto) && /Noturno/.test(r.texto), 'a aba Dia é a primeira tela e mostra diurno e noturno', { tab: r.tab });
+    ok(r.n > 0 && r.semHorario.length === 0, 'todo guarda em serviço aparece com horário', r.semHorario);
+    ok(r.duplicados === 0, 'ninguém aparece duas vezes no mesmo dia', r.duplicados);
+    ok(r.faltantes.length === 0, 'quem a grade conta como em serviço na área aparece na prévia do mesmo turno', r.faltantes);
+    ok(r.tiraDias === r.dias, 'há um botão para cada dia do recesso', { b: r.tiraDias, d: r.dias });
+    const r2 = await page.evaluate(() => {
+      const ee = eeAtual(); eeAbrir(ee.id); const ant = eeIndicDe(eeAnalise(ee)), g = state.guardas.find(x => eeEntra(ee, x) && (ee.g[x.id] || {}).grupo), novo = ee.g[g.id].grupo === 'N' ? 'A' : 'N';
+      window._eeMotivoPadrao = 'teste do motivo padrão'; eeSetGrupo(g.id, novo); const modalComPadrao = !!document.getElementById('em-motivo'), lg = eeOp(ee).log.slice(-1)[0];
+      const out = { modalComPadrao, mudou: ee.g[g.id].grupo === novo, motivo: lg && lg.motivo, impacto: lg && lg.impacto, depois: eeIndicDe(eeAnalise(ee)), ant, barra: document.getElementById('main').innerText.includes('desde que você abriu') };
+      window._eeMotivoPadrao = ''; eeSetGrupo(g.id, novo === 'N' ? 'A' : 'N'); out.modalSemPadrao = !!document.getElementById('em-motivo'); closeModal(); return out; });
+    ok(r2.mudou && !r2.modalComPadrao, 'com motivo preenchido a alteração vale na hora, sem janela', r2);
+    ok(r2.motivo === 'teste do motivo padrão' && /déficits/.test(r2.impacto || ''), 'o motivo e o impacto vão para o Registro', r2);
+    ok(r2.barra && typeof r2.depois.def === 'number', 'a barra de indicadores atualiza e compara com a abertura', r2);
+    ok(r2.modalSemPadrao, 'sem motivo preenchido o sistema continua perguntando', r2);
+    await ctx.close(); }
 
   await browser.close(); srv.close();
   console.log(`\n${falhas ? '❌' : '✅'} ${passou} verificações passaram, ${falhas} falharam${pulou ? ', ' + pulou + ' puladas' : ''}`); process.exit(falhas ? 1 : 0);

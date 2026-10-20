@@ -5330,7 +5330,7 @@ function viewIpmFinal() {
    cobre o feriado do seu grupo (Natal ou Ano Novo). Cada equipe se divide ao meio; o mínimo de agentes + supervisor
    por plantão de rua é fechado com o PPC (jornada trocada) e, se faltar, sinalizado como extra.
    ============================================================ */
-let eeSel = '', eeTab = 'resumo', eeSoPend = false, eeUn = '', _eeMemo = {};
+let eeSel = '', eeTab = 'dia', eeSoPend = false, eeUn = '', _eeMemo = {};
 const EE_DS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const EE_ROT = { N: 'Natal', A: 'Ano Novo', G: 'Agendado' };
 const eeAdd = (k, n) => iso(addDays(parseISO(k), n));
@@ -5564,15 +5564,15 @@ function eeLista(pode) {
       <div class="text-xs mt-2 font-semibold ${cor}">${esc(eeRotuloStatus(ee))}</div><div class="text-xs text-slate-500">${a.gr.deficits.length} déficit(s) · ${a.incs.filter(i => !i.decisao).length} inconsistência(s) dos 9 dias · ${a.gr.conflitos.length} conflito(s) · ${a.propostas} proposta(s) a autorizar</div></div>`; }).join('')
       : `<div class="${CARD} p-4 text-sm text-slate-500">Nenhuma escala especial ainda. Toque em <b>+ Nova escala especial</b>.</div>`}`;
 }
-const eeAbrir = id => { eeSel = id; eeTab = 'resumo'; eeUn = ''; render(); };
+const eeAbrir = id => { eeSel = id; eeTab = 'dia'; eeUn = ''; eeDiaSel = ''; _eeBase = null; render(); };
 function eeDetalhe(ee, pode) {
-  const a = eeAnalise(ee), r = eeResumo(ee), nPend = a.st.pendencias, abas = [['resumo', 'Resumo'], ['folgas', 'Folgas'], ['grade', 'Grade'], ['deficits', 'Déficits' + (nPend ? ` (${nPend})` : '')], ['rua', 'Plantões de rua'], ['comp', 'Composição'], ['registro', 'Registro']];
+  const a = eeAnalise(ee), r = eeResumo(ee), nPend = a.st.pendencias, abas = [['dia', 'Dia'], ['resumo', 'Resumo'], ['folgas', 'Folgas'], ['grade', 'Grade'], ['deficits', 'Déficits' + (nPend ? ` (${nPend})` : '')], ['rua', 'Plantões de rua'], ['comp', 'Composição'], ['registro', 'Registro']];
   const cor = a.st.estado.startsWith('aprovada') && !a.aprovDesatualizada ? 'bg-emerald-100 text-emerald-800' : a.st.pendencias || a.aprovDesatualizada ? 'bg-amber-100 text-amber-900' : 'bg-sky-100 text-sky-800';
   $('main').innerHTML = `<div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="flex items-center gap-2"><button onclick="eeSel='';render()" class="${BTN_G}" aria-label="Voltar">←</button><div><div class="font-semibold">${esc(ee.nome)}</div><div class="text-xs text-slate-500">${br(ee.inicio)} a ${br(ee.fim)}</div></div></div>
     <div class="flex gap-2 flex-wrap"><button onclick="eeImprimir()" class="${BTN_P}">Imprimir / PDF</button><button onclick="eeFormExportar()" class="${BTN_O}">Excel ▾</button>${pode ? `<button onclick="eeMais()" class="${BTN_O}">Mais ▾</button>` : ''}</div></div>
     <div class="text-xs font-semibold rounded-lg px-3 py-2 mb-2 ${cor}">${esc(eeRotuloStatus(ee))}${MODO_TESTE ? ' · MODO DE TESTE LOCAL' : ''}</div>
     <div class="flex rounded-lg border border-slate-300 overflow-x-auto text-sm mb-3" role="tablist">${abas.map(([k, t]) => `<button role="tab" aria-selected="${eeTab === k}" onclick="eeTab='${k}';render()" class="tt shrink-0 px-3 ${eeTab === k ? 'bg-primary text-white' : 'bg-white'}">${t}</button>`).join('')}</div>
-    ${{ resumo: () => eeAbaResumo(ee, r, pode), folgas: () => eeAbaFolgas(ee, pode), grade: () => eeAbaGrade(ee, pode), deficits: () => eeAbaDeficits(ee, pode), rua: () => eeAbaRua(ee, r, pode), comp: () => eeAbaComp(ee, pode), registro: () => eeAbaRegistro(ee) }[eeTab]()}`;
+    ${{ dia: () => eeAbaDia(ee, pode), resumo: () => eeAbaResumo(ee, r, pode), folgas: () => eeAbaFolgas(ee, pode), grade: () => eeAbaGrade(ee, pode), deficits: () => eeAbaDeficits(ee, pode), rua: () => eeAbaRua(ee, r, pode), comp: () => eeAbaComp(ee, pode), registro: () => eeAbaRegistro(ee) }[eeTab]()}`;
 }
 function eeAbaResumo(ee, r, pode) {
   const chip = (t, v, cor) => `<div class="${CARD} p-3 text-center"><div class="text-xl font-bold ${cor || ''}">${v}</div><div class="text-[11px] text-slate-500 leading-tight">${t}</div></div>`;
@@ -5651,6 +5651,84 @@ function eeAbaGrade(ee, pode) {
       return `<details class="${CARD} p-2 mb-2" ${eeF.dia || nd ? 'open' : ''}><summary class="cursor-pointer text-sm font-semibold flex items-center gap-2 flex-wrap">${esc(d.rotuloDia)}<span class="text-[11px] font-normal text-slate-500">${eePerDe(ee, d.k) === 'N' ? 'período do Natal' : 'período do Ano Novo'}${ee.natal.dias.includes(d.k) || ee.anoNovo.dias.includes(d.k) ? ' · FERIADO' : ''}</span>${nd ? `<span class="text-[11px] px-2 rounded-full bg-red-100 text-red-800">${nd} déficit(s)</span>` : ''}${np ? `<span class="text-[11px] px-2 rounded-full bg-amber-100 text-amber-900">${np} pendência(s)</span>` : ''}${!nd && !np ? '<span class="text-[11px] px-2 rounded-full bg-emerald-100 text-emerald-800">ok</span>' : ''}</summary>
         <div class="grid gap-2 mt-2 md:grid-cols-2 xl:grid-cols-3">${ls.map(l => eeLinhaCard(ee, l, pode)).join('')}</div></details>`; }).join('') : `<div class="${CARD} p-4 text-sm text-slate-500">Nada para mostrar com estes filtros.</div>`}`;
 }
+/* ---------- SERVIÇO DO DIA: prévia de quem trabalha + edição com efeito imediato ---------- */
+let eeDiaSel = '', _eeBase = null;
+const eeHorTxt = h => h && h[0] ? `${h[0]}–${h[1]}` : '—';
+const eeIndicDe = a => ({ def: a.gr.deficits.length, faltam: a.gr.deficits.reduce((s, d) => s + d.faltam, 0), conf: a.gr.conflitos.length, inc: a.incs.filter(i => !i.decisao).length, prop: a.propostas });
+function eeDiaPadrao(ee) {
+  const dias = eeAnalise(ee).gr.dias, hoje = iso(new Date());
+  return (dias.find(d => d.k === hoje) || dias.find(d => d.linhas.some(l => l.faltam > 0)) || dias[0] || { k: ee.inicio }).k;
+}
+// quem trabalha em cada turno na data k (só leitura): turno do ciclo, recesso, afastamento e as atribuições já autorizadas
+function eeServicoDoDia(ee, k) {
+  const a = eeAnalise(ee), atr = (a.gr.atribuicoes || []).filter(x => x.k === k && x.st !== 'proposta' && x.st !== 'negado');
+  const R = { D: [], N: [], exp: [], recesso: [], afastados: [], folga: [] }, ord = gr => { const i = EE_ORD_GRUPO.indexOf(gr); return i < 0 ? 99 : i; };
+  state.guardas.forEach(g => {
+    const e = g.equipeId && getEquipe(g.equipeId); if (!e) return;
+    const c = getCiclo(e.cicloId), base = eeBase(g, k), sup = g.funcao === 'supervisor', hor = t => horario(c, t, sup ? 'supervisor' : 'agente');
+    const as = atr.filter(x => x.gid === g.id), p = { g, eq: e.nome, grupo: e.grupo || 'Outros', sup, ord: ord(e.grupo), papeis: as.map(x => EE_M.PAPEL_ROT[x.papel] || x.papel), nota: '', hor: null };
+    const aj = as.find(x => (x.papel === 'ppc-apoio' || x.papel === 'reforco') && (x.t === 'D' || x.t === 'N'));
+    if (aj) { p.hor = hor(aj.t); p.nota = base === aj.t ? '' : base === 'F' ? 'folga: serviço extra' : 'jornada ajustada'; R[aj.t].push(p); return; }
+    if (base === 'D' || base === 'N') {
+      p.hor = hor(base);
+      if (eeComp(ee, g, k)) { p.nota = 'escala compensada'; R.recesso.push(p); }
+      else if (eeAus(g, k)) { p.nota = 'afastado(a)'; R.afastados.push(p); }
+      else if (eeExped(g)) R.exp.push(p);
+      else R[base].push(p);
+      return;
+    }
+    const b = eeEntra(ee, g) ? eeBloco(ee, g) : null;
+    if (b && k >= b.bs && (!b.be || k <= b.be)) { p.nota = 'folga do recesso'; R.recesso.push(p); } else R.folga.push(p);
+  });
+  const cmp = (x, y) => x.ord - y.ord || x.eq.localeCompare(y.eq) || (y.sup ? 1 : 0) - (x.sup ? 1 : 0) || eeNome(x.g).localeCompare(eeNome(y.g));
+  Object.keys(R).forEach(t => R[t].sort(cmp));
+  return R;
+}
+function eeLinhaPessoaDia(ee, p, pode) {
+  const d = ee.g[p.g.id] || {}, edita = pode && eeEntra(ee, p.g);
+  const grp = edita ? `<select onchange="eeSetGrupo('${p.g.id}',this.value)" class="h-8 border border-slate-300 rounded-lg px-1 text-[11px] bg-white shrink-0" aria-label="Grupo de recesso de ${esc(eeNome(p.g))}"><option value="" ${d.grupo ? '' : 'selected'}>sem grupo</option><option value="N" ${d.grupo === 'N' ? 'selected' : ''}>Natal</option><option value="A" ${d.grupo === 'A' ? 'selected' : ''}>Ano Novo</option></select>` : '';
+  const chip = (t, c) => `<span class="text-[10px] px-1.5 py-0.5 rounded ${c}">${esc(t)}</span>`;
+  return `<div class="flex items-center gap-2 py-1.5 border-t border-slate-100 text-sm"><div class="flex-1 min-w-0"><b>${esc(eeNome(p.g))}</b> <span class="text-[11px] text-slate-500">${esc(p.g.matricula || '')}</span>
+    ${p.sup ? chip('supervisor', 'bg-sky-100 text-sky-800') : ''}${p.papeis.map(x => chip(x, 'bg-indigo-100 text-indigo-800')).join(' ')}${p.nota ? chip(p.nota, 'bg-amber-100 text-amber-900') : ''}</div>
+    <div class="text-xs font-semibold tabular-nums shrink-0">${eeHorTxt(p.hor)}</div>${grp}${pode ? `<button onclick="eeFormGuarda('${p.g.id}')" class="${BTN_G} !h-8 text-xs shrink-0">Plantões</button>` : ''}</div>`;
+}
+function eeBlocoRoster(ee, lista, pode) {
+  let ant = '';
+  return lista.map(p => { const cab = p.grupo === p.eq ? p.eq : `${p.grupo} · ${p.eq}`, h = cab !== ant ? `<div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mt-2">${esc(cab)}</div>` : ''; ant = cab; return h + eeLinhaPessoaDia(ee, p, pode); }).join('');
+}
+function eeAbaDia(ee, pode) {
+  const a = eeAnalise(ee), dias = a.gr.dias;
+  if (!eeDiaSel || !dias.some(d => d.k === eeDiaSel)) eeDiaSel = eeDiaPadrao(ee);
+  const k = eeDiaSel, i = dias.findIndex(d => d.k === k), dia = dias[i], S = eeServicoDoDia(ee, k), ind = eeIndicDe(a);
+  if (!_eeBase || _eeBase.id !== ee.id) _eeBase = { id: ee.id, v: ind };
+  const b = _eeBase.v, st = d => d.linhas.some(l => l.faltam > 0) ? 'deficit' : d.linhas.some(l => l.status === 'pendencia') ? 'pendencia' : 'ok';
+  const corDia = { deficit: 'border-red-400 bg-red-50 text-red-800', pendencia: 'border-amber-400 bg-amber-50 text-amber-900', ok: 'border-emerald-300 bg-white text-slate-700' };
+  const tira = dias.map(d => { const s = st(d), sel = d.k === k, dt = parseISO(d.k); return `<button ${sel ? 'id="ee-dia-sel"' : ''} onclick="eeDiaSel='${d.k}';render()" aria-pressed="${sel}" class="shrink-0 w-14 rounded-lg border-2 px-1 py-1 text-center leading-tight ${corDia[s]} ${sel ? 'ring-2 ring-primary font-bold' : ''}"><div class="text-[10px] uppercase">${EE_DS[dt.getDay()]}</div><div class="text-sm">${p2(dt.getDate())}/${p2(dt.getMonth() + 1)}</div></button>`; }).join('');
+  const dl = (v, v0) => v === v0 ? '' : `<span class="text-[11px] ${v < v0 ? 'text-emerald-700' : 'text-red-700'}">${v < v0 ? '▼' : '▲'}${Math.abs(v - v0)}</span>`;
+  const chip = (t, v, v0, ruim) => `<div class="${CARD} p-2 text-center"><div class="text-lg font-bold ${v ? ruim : 'text-emerald-700'}">${v} ${dl(v, v0)}</div><div class="text-[10px] text-slate-500 leading-tight">${t}</div></div>`;
+  const propDia = (a.gr.atribuicoes || []).filter(x => x.k === k && x.st === 'proposta');
+  const linhasDia = dia.linhas.slice().sort((x, y) => ({ deficit: 0, pendencia: 1, ok: 2 }[x.status] - { deficit: 0, pendencia: 1, ok: 2 }[y.status]));
+  const prob = linhasDia.filter(l => l.status !== 'ok'), oks = linhasDia.filter(l => l.status === 'ok');
+  const turnoSec = (t, tit) => { const L = S[t], area = dia.linhas.find(l => l.linha === 'area' && l.turno === t), hr = L.length ? eeHorTxt(L.find(p => !p.sup && p.hor) ? L.find(p => !p.sup && p.hor).hor : L[0].hor) : '';
+    return `<div class="${CARD} p-3 mb-2"><div class="flex items-center justify-between gap-2 flex-wrap"><div class="font-semibold">${tit} <span class="text-xs font-normal text-slate-500">${hr}</span></div><div class="text-xs text-slate-600"><b>${L.length}</b> em serviço${area ? ` · área <b class="${area.faltam ? 'text-red-700' : 'text-emerald-700'}">${area.disponiveis}/${area.minimo}</b>` : ''}</div></div>
+      ${L.length ? eeBlocoRoster(ee, L, pode) : '<div class="text-sm text-slate-500 mt-1">Ninguém escalado neste turno.</div>'}</div>`; };
+  const nomes = L => L.map(p => `${esc(eeNome(p.g))}${p.nota && p.nota !== 'folga do recesso' ? ' (' + esc(p.nota) + ')' : ''}`).join(', ');
+  const fold = (tit, L) => L.length ? `<details class="${CARD} p-2 mb-2"><summary class="cursor-pointer text-sm font-medium">${tit} (${L.length})</summary><div class="text-xs text-slate-600 mt-1">${nomes(L)}</div></details>` : '';
+  return `<div class="flex items-center gap-1 mb-2"><button onclick="eeDiaSel='${dias[Math.max(0, i - 1)].k}';render()" class="${BTN_G}" aria-label="Dia anterior" ${i === 0 ? 'disabled' : ''}>◀</button>
+      <div class="flex gap-1 overflow-x-auto flex-1 py-1" id="ee-dias-tira">${tira}</div><button onclick="eeDiaSel='${dias[Math.min(dias.length - 1, i + 1)].k}';render()" class="${BTN_G}" aria-label="Próximo dia" ${i === dias.length - 1 ? 'disabled' : ''}>▶</button></div>
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div><div class="font-semibold">${esc(dia.rotuloDia)}${ee.natal.dias.includes(k) || ee.anoNovo.dias.includes(k) ? ' <span class="text-[11px] font-normal text-red-700">FERIADO</span>' : ''}</div><div class="text-xs text-slate-500">${eePerDe(ee, k) === 'N' ? 'período do Natal' : 'período do Ano Novo'} · serviço previsto para este dia</div></div>
+      <div class="text-[11px] text-slate-500">${dia.linhas.filter(l => l.faltam > 0).length} déficit(s) neste dia</div></div>
+    <div class="sticky top-0 z-10 bg-slate-50/95 backdrop-blur py-1 -mx-1 px-1 mb-2"><div class="grid grid-cols-4 gap-2">${chip('déficits (escala toda)', ind.def, b.def, 'text-red-700')}${chip('guardas faltando', ind.faltam, b.faltam, 'text-red-700')}${chip('conflitos', ind.conf, b.conf, 'text-red-700')}${chip('propostas a autorizar', ind.prop, b.prop, 'text-amber-700')}</div>
+      <div class="text-[10px] text-slate-500 mt-0.5">▼▲ = mudança desde que você abriu esta escala. <button onclick="_eeBase=null;render()" class="underline">zerar comparação</button></div></div>
+    ${pode ? `<div class="${CARD} p-2 mb-2"><label class="block text-xs font-medium mb-1" for="ee-mot-padrao">Motivo das alterações desta tela (opcional)</label><input id="ee-mot-padrao" value="${esc(window._eeMotivoPadrao || '')}" oninput="window._eeMotivoPadrao=this.value.trim()" placeholder="Ex.: ajuste de cobertura do recesso" class="${INPUT}"><div class="text-[11px] text-slate-500 mt-1">Preenchido: o que você mudar aqui vale na hora, sem perguntar o motivo a cada vez, e o motivo vai para o Registro. Vazio: o sistema pergunta.</div></div>` : ''}
+    ${propDia.length ? `<div class="${CARD} p-2 mb-2 border-amber-300 bg-amber-50"><div class="text-sm font-semibold mb-1">Propostas deste dia (${propDia.length})</div>${propDia.map(x => { const g = getGuarda(x.gid); return `<div class="flex items-center justify-between gap-2 py-1 border-t border-amber-200 text-sm"><div class="min-w-0"><b>${esc(g ? eeNome(g) : x.gid)}</b> <span class="text-xs text-amber-900">${esc(EE_M.PAPEL_ROT[x.papel] || x.papel)}${x.t === 'D' ? ' · diurno' : x.t === 'N' ? ' · noturno' : ''}</span></div>${pode ? `<div class="flex gap-1 shrink-0"><button onclick="eeAutorizarProposta('${esc(x.papel)}','${esc(x.ref)}','${x.gid}','${k}')" class="${BTN_P} !h-8 text-xs">Autorizar</button><button onclick="eeRecusarProposta('${esc(x.papel)}','${esc(x.ref)}','${x.gid}','${k}','${esc(x.t)}')" class="${BTN_G} !h-8 text-xs">Recusar</button></div>` : ''}</div>`; }).join('')}</div>` : ''}
+    ${prob.length ? `<div class="text-sm font-semibold mb-1">Precisa de atenção</div><div class="grid gap-2 md:grid-cols-2 mb-2">${prob.map(l => eeLinhaCard(ee, l, pode)).join('')}</div>` : `<div class="${CARD} p-2 mb-2 text-sm text-emerald-800 bg-emerald-50 border-emerald-200">Cobertura completa neste dia.</div>`}
+    ${turnoSec('D', 'Diurno')}${turnoSec('N', 'Noturno')}
+    ${S.exp.length ? `<div class="${CARD} p-3 mb-2"><div class="font-semibold">Expediente <span class="text-xs font-normal text-slate-500">${S.exp.length} em serviço</span></div>${eeBlocoRoster(ee, S.exp, false)}</div>` : ''}
+    ${fold('Em recesso / escala compensada', S.recesso)}${fold('Afastados', S.afastados)}${fold('Em folga normal', S.folga)}
+    ${oks.length ? `<details class="${CARD} p-2 mb-2"><summary class="cursor-pointer text-sm font-medium">Linhas de cobertura sem problema (${oks.length})</summary><div class="grid gap-2 md:grid-cols-2 mt-2">${oks.map(l => eeLinhaCard(ee, l, pode)).join('')}</div></details>` : ''}
+    ${(setTimeout(() => { const el = $('ee-dia-sel'), c = $('ee-dias-tira'); if (el && c) c.scrollLeft = el.offsetLeft - c.offsetLeft - c.clientWidth / 2 + el.clientWidth / 2; }, 0), '')}`;
+}
 /* ---------- análise da escala (grade operacional, inconsistências, rodízio, estado) ---------- */
 function eeCtx(ee) {
   const op = eeOp(ee), G = {}, E = {}, linha = { ppc: [], romu: [], gtam: [], central: [], almox: [] }, bl = {};
@@ -5700,6 +5778,7 @@ function eeAcao(ee, info, fn, recalc, semRender) {
   eeLog(ee, Object.assign({ impacto: eeImpactoTxt(a, b) }, info)); eeReset(); save(); if (!semRender) render();
 }
 function eeMotivo(titulo, texto, cb, obrig) {
+  if (eeTab === 'dia' && window._eeMotivoPadrao) { cb(window._eeMotivoPadrao); return; }   // aba Dia com motivo preenchido: aplica na hora (o motivo vai para o Registro)
   window._eeMotivoCb = cb; window._eeMotivoObrig = obrig !== false;
   openModal(titulo, `<div class="space-y-3"><p class="text-sm text-slate-700">${texto}</p><div><label class="block text-sm font-medium mb-1">Motivo${obrig === false ? ' (opcional)' : ''}</label><textarea id="em-motivo" rows="3" class="w-full border border-slate-300 rounded-lg p-2 text-sm" placeholder="Ex.: pedido do guarda; decisão do comando; ajuste de cobertura…"></textarea></div></div>`,
     `<div class="flex gap-2 justify-end"><button onclick="closeModal();render()" class="${BTN_G}">Cancelar</button><button onclick="eeMotivoOk()" class="${BTN_P}">Confirmar</button></div>`);
