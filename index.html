@@ -5538,7 +5538,7 @@ function eeCardPPC(ee) {
   return `<div class="${CARD} p-3 mb-3"><div class="flex justify-between items-center gap-2 mb-1"><b class="text-sm">PPC integrado às equipes de área</b><button onclick="eeRedistribuirPPC()" class="${BTN_G} !py-1 !px-2 text-xs">Refazer distribuição</button></div>
     <p class="text-[11px] text-slate-500 mb-1">De ${brCurto(parseISO(j.ini))} a ${brCurto(parseISO(j.fim))} cada PPC trabalha com a equipe de área que tem os mesmos dias (fora disso, escala normal). Pares: ${pares}.</p>
     <p class="text-[11px] text-slate-500 mb-2">Agentes por equipe: ${eqs.map(e => `${esc(e.nome)} ${cont(e)}`).join(' · ')}</p>
-    ${T.map(x => `<div class="flex items-center justify-between gap-2 py-1 border-t border-slate-100 text-sm ${x.ok ? '' : 'bg-red-50'}"><span>${esc(eeNome(x.g))} <span class="text-[11px] text-slate-500">${esc(x.orig)}</span>${x.apoio ? ' <span class="text-[10px] px-1 rounded bg-amber-100 text-amber-800">apoio</span>' : ''}${x.apoio ? `<br><span class="text-[10px] text-slate-500">entra ${x.entra ? eeDia(x.entra) : '—'} · volta à própria escala ${x.volta ? eeDia(x.volta) : '—'}${x.perdidos.length ? ` · ${x.perdidos.length} plantão(ões) da ${esc(x.dest)} viram folga para respeitar o ciclo` : ''}</span>` : ''}</span><select onchange="eeSetPPC('${x.g.id}', this.value)" class="border border-slate-300 rounded px-1 py-1 text-sm">${eqs.map(e => `<option value="${e.id}" ${eePPCEq(ee, x.g) === e.id ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>`).join('')}</div>`;
+    ${T.map(x => `<div class="flex items-center justify-between gap-2 py-1 border-t border-slate-100 text-sm ${x.ok ? '' : 'bg-red-50'}"><span><button onclick="eeVerMes('${x.g.id}')" class="underline decoration-dotted">${esc(eeNome(x.g))}</button> <span class="text-[11px] text-slate-500">${esc(x.orig)}</span>${x.apoio ? ' <span class="text-[10px] px-1 rounded bg-amber-100 text-amber-800">apoio</span>' : ''}${x.apoio ? `<br><span class="text-[10px] text-slate-500">entra ${x.entra ? eeDia(x.entra) : '—'} · volta à própria escala ${x.volta ? eeDia(x.volta) : '—'}${x.perdidos.length ? ` · ${x.perdidos.length} plantão(ões) da ${esc(x.dest)} viram folga para respeitar o ciclo` : ''}</span>` : ''}</span><select onchange="eeSetPPC('${x.g.id}', this.value)" class="border border-slate-300 rounded px-1 py-1 text-sm">${eqs.map(e => `<option value="${e.id}" ${eePPCEq(ee, x.g) === e.id ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>`).join('')}</div>`;
 }
 function eeRefazCob(ee, tentativas = 30) {       // mantém o que foi colocado à mão (m:true) e refaz o resto, escolhendo a melhor entre várias tentativas
   const manual = (ee.cob || []).filter(c => c.m && (!c.g || (() => { const g = getGuarda(c.g); return g && !eeComp(ee, g, c.k) && !eeAus(g, c.k); })()));
@@ -5796,7 +5796,59 @@ function eeCriarForm() {
 }
 function eeExcluir(id) { const ee = eeGet(id); if (!ee || !exigir('especial.editar')) return; confirmar('Excluir escala especial', `<p>Excluir <b>${esc(ee.nome)}</b>? Não dá para desfazer (exporte o plano antes, se precisar guardar).</p>`, () => { state.escalasEspeciais = state.escalasEspeciais.filter(x => x.id !== id); if (eeSel === id) eeSel = ''; auditar('Escala especial', ee.nome, 'excluiu'); save(); render(); }, 'Excluir', true); }
 function eeMais() {
-  openModal('Mais opções', `<div class="grid gap-2">${[['eeFormParam()', 'Parâmetros (datas, feriados, mínimo)'], ['eeFormHist()', `Importar histórico de ${eeAtual().anoAnt} (lista de nomes)`], ['eeExportar()', 'Exportar plano (.json)'], ['eeFormImportar()', 'Importar plano (.json)'], ['eeLimparCob()', 'Descartar coberturas manuais e refazer'], ['eeProximo()', `Criar a escala de ${eeAtual().ano + 1} (usa esta como histórico)`]].map(([f, t]) => `<button onclick="closeModal();${f}" class="${BTN_G} !justify-start text-left">${t}</button>`).join('')}</div>`);
+  openModal('Mais opções', `<div class="grid gap-2">${[['eeVerificarMes()', 'Verificar escalas do mês (inconsistências e trocas de equipe)'], ['eeFormParam()', 'Parâmetros (datas, feriados, mínimo)'], ['eeFormHist()', `Importar histórico de ${eeAtual().anoAnt} (lista de nomes)`], ['eeExportar()', 'Exportar plano (.json)'], ['eeFormImportar()', 'Importar plano (.json)'], ['eeLimparCob()', 'Descartar coberturas manuais e refazer'], ['eeProximo()', `Criar a escala de ${eeAtual().ano + 1} (usa esta como histórico)`]].map(([f, t]) => `<button onclick="closeModal();${f}" class="${BTN_G} !justify-start text-left">${t}</button>`).join('')}</div>`);
+}
+/* ---------- escala do guarda no mês (normal + escala especial) e inconsistências ---------- */
+function eeMesDias(ee, g, de, ate) {               // cada dia: código para mostrar, turno trabalhado e equipe do dia
+  const out = [];
+  for (let k = de; k <= ate; k = eeAdd(k, 1)) {
+    const dentro = k >= ee.inicio && k <= ee.fim, eq = eePPCNoDia(ee, g, k) || g.equipeId;
+    let cod, tr;
+    if (dentro && eeEntra(ee, g)) { cod = eeCod(ee, g, k); tr = eeTurnoDe(ee, g, k); }
+    else { const b = eeBase(g, k), aus = eeAus(g, k); cod = { c: aus ? 'A' : b === 'D' || b === 'N' ? b : 'F' }; tr = !aus && (b === 'D' || b === 'N') ? b : ''; }
+    out.push({ k, cod, tr, eq, dentro });
+  }
+  return out;
+}
+function eeInconsist(ee, g, de, ate) {             // descanso < 12h, mais de 2 plantões em 5 dias, troca de equipe
+  const L = eeMesDias(ee, g, eeAdd(de, -5), eeAdd(ate, 5)), T = {}; L.forEach(x => { T[x.k] = x.tr; });
+  const p = [], vist = new Set(), add = (k, t) => { if (k < de || k > ate || vist.has(k + t)) return; vist.add(k + t); p.push({ k, t }); };
+  let maxN = 0; for (let k = eeAdd(de, -10); k <= eeAdd(ate, 5); k = eeAdd(k, 1)) { let c = 0; for (let j = 0; j < 5; j++) { const b = turnoGuarda(g, parseISO(eeAdd(k, j))); if (b === 'D' || b === 'N') c++; } maxN = Math.max(maxN, c); }   // o máximo que o próprio ciclo do guarda já tem
+  let antes = false;
+  L.forEach((x, i) => {
+    if (x.tr === 'N' && T[eeAdd(x.k, 1)] === 'D') add(eeAdd(x.k, 1), 'diurno logo após noturno (sem 12h de descanso)');
+    const n = [0, 1, 2, 3, 4].filter(j => L[i + j] && L[i + j].tr).length, demais = n > Math.max(2, maxN);
+    if (demais && !antes) add(x.k, `${n} plantões em 5 dias a partir deste dia (o ciclo normal tem no máximo ${Math.max(2, maxN)})`); antes = demais;
+    const ant = L[i - 1]; if (ant && ant.eq !== x.eq && x.k >= de && x.k <= ate) add(x.k, `troca de equipe: ${(getEquipe(ant.eq) || {}).nome || ''} → ${(getEquipe(x.eq) || {}).nome || ''}`);
+  });
+  return p;
+}
+function eeVerMes(gid, mes) {
+  const ee = eeAtual(), g = getGuarda(gid), base = parseISO(ee.inicio), m0 = mes || `${base.getFullYear()}-${p2(base.getMonth() + 1)}`;
+  const [a, m] = m0.split('-').map(Number), de = `${a}-${p2(m)}-01`, ate = eeAdd(`${m === 12 ? a + 1 : a}-${p2(m === 12 ? 1 : m + 1)}-01`, -1);
+  const L = eeMesDias(ee, g, de, ate), I = eeInconsist(ee, g, de, ate), ruim = new Set(I.filter(x => !x.t.startsWith('troca')).map(x => x.k)), troca = new Set(I.filter(x => x.t.startsWith('troca')).map(x => x.k));
+  const fim = parseISO(ee.fim), mesFim = `${fim.getFullYear()}-${p2(fim.getMonth() + 1)}`, meses = [...new Set([m0 < `${base.getFullYear()}-${p2(base.getMonth() + 1)}` ? m0 : null, `${base.getFullYear()}-${p2(base.getMonth() + 1)}`, mesFim].filter(Boolean))];
+  const pre = parseISO(de).getDay(), cel = x => { const [bg, fg, tx] = EE_CEL[x.cod.c] || EE_CEL.F; const outra = x.eq !== g.equipeId;
+    return `<div class="rounded border ${ruim.has(x.k) ? 'border-red-500 border-2' : troca.has(x.k) ? 'border-amber-500 border-2' : 'border-slate-200'} p-0.5 text-center ${x.dentro ? '' : 'opacity-80'}" style="background:${bg};color:${fg}"><div class="text-[9px] text-left" style="color:${fg}">${parseISO(x.k).getDate()}</div><div class="font-bold text-sm leading-4">${tx || '&nbsp;'}${x.cod.t && x.cod.c !== 'D' && x.cod.c !== 'N' ? `<sub class="font-normal">${x.cod.t}</sub>` : ''}</div><div class="text-[8px] leading-3 truncate">${outra ? esc((getEquipe(x.eq) || {}).nome || '') : '&nbsp;'}</div></div>`; };
+  const trab = L.filter(x => x.tr).length;
+  openModal(`${eeNome(g)} — ${['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][m - 1]}/${a}`, `
+    <div class="flex gap-1 mb-2">${meses.map(x => `<button onclick="eeVerMes('${gid}','${x}')" class="${x === m0 ? BTN_P : BTN_G} !py-1 !px-2 text-xs">${['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][+x.slice(5) - 1]}/${x.slice(0, 4)}</button>`).join('')}</div>
+    <div class="text-[11px] text-slate-500 mb-1">${esc((getEquipe(g.equipeId) || {}).nome || '')} · ${trab} plantões no mês · escala especial de ${brCurto(parseISO(ee.inicio))} a ${brCurto(parseISO(ee.fim))}</div>
+    <div class="grid grid-cols-7 gap-0.5 text-[10px] text-slate-500 text-center mb-0.5">${EE_DS.map(d => `<div>${d}</div>`).join('')}</div>
+    <div class="grid grid-cols-7 gap-0.5">${'<div></div>'.repeat(pre)}${L.map(cel).join('')}</div>
+    <div class="text-[10px] text-slate-500 mt-1">Nome de equipe na célula = dia trabalhado em outra equipe · borda vermelha = inconsistência · borda laranja = troca de equipe</div>
+    <div class="mt-2 text-sm">${I.length ? I.map(x => `<div class="py-0.5 ${x.t.startsWith('troca') ? 'text-amber-800' : 'text-red-700'}"><b>${eeDia(x.k)}</b> · ${esc(x.t)}</div>`).join('') : '<div class="text-emerald-700">Nenhuma inconsistência no mês.</div>'}</div>`,
+    `<div class="flex justify-end"><button onclick="closeModal()" class="${BTN_G}">Fechar</button></div>`, true);
+}
+function eeVerificarMes() {                        // varre todos os guardas do rodízio (e do PPC integrado) nos meses da escala
+  const ee = eeAtual(), i = parseISO(ee.inicio), f = parseISO(ee.fim), de = `${i.getFullYear()}-${p2(i.getMonth() + 1)}-01`, ate = eeAdd(`${f.getMonth() === 11 ? f.getFullYear() + 1 : f.getFullYear()}-${p2(f.getMonth() === 11 ? 1 : f.getMonth() + 2)}-01`, -1);
+  const R = state.guardas.filter(g => eeEntra(ee, g)).map(g => ({ g, I: eeInconsist(ee, g, de, ate) })).filter(x => x.I.length);
+  const prob = R.filter(x => x.I.some(y => !y.t.startsWith('troca'))), so = R.filter(x => !prob.includes(x));
+  const linha = x => `<button onclick="eeVerMes('${x.g.id}')" class="w-full text-left py-1.5 border-t border-slate-100"><b class="text-sm">${esc(eeNome(x.g))}</b> <span class="text-[11px] text-slate-500">${esc((getEquipe(x.g.equipeId) || {}).nome || '')}</span><div class="text-[11px] ${x.I.some(y => !y.t.startsWith('troca')) ? 'text-red-700' : 'text-amber-800'}">${x.I.map(y => `${brCurto(parseISO(y.k))}: ${esc(y.t)}`).join(' · ')}</div></button>`;
+  openModal('Verificar escalas do mês', `<p class="text-xs text-slate-500 mb-2">De ${brCurto(parseISO(de))} a ${brCurto(parseISO(ate))}, juntando a escala normal com a escala especial. Toque no guarda para ver o calendário.</p>
+    <div class="font-semibold text-sm text-red-700">Com inconsistência: ${prob.length}</div>${prob.map(linha).join('') || '<p class="text-xs text-emerald-700 py-1">Nenhuma.</p>'}
+    <div class="font-semibold text-sm text-amber-800 mt-3">Só troca de equipe: ${so.length}</div>${so.map(linha).join('') || '<p class="text-xs text-slate-500 py-1">Nenhuma.</p>'}`,
+    `<div class="flex justify-end"><button onclick="closeModal()" class="${BTN_G}">Fechar</button></div>`, true);
 }
 function eeLimparCob() { if (!exigir('especial.editar')) return; const ee = eeAtual(); confirmar('Descartar coberturas manuais', '<p>Apaga as coberturas e extras colocados à mão e refaz tudo automaticamente.</p>', () => { ee.cob = []; eeRecalc(ee, false); save(); render(); toast('Coberturas refeitas'); }, 'Descartar', true); }
 function eeFormParam() {
@@ -5831,7 +5883,7 @@ function eeFormGuarda(gid) {
     <div class="text-sm font-medium mb-1">Ou digite as ${eeNComp(g)} datas (plantões compensados)</div><div class="grid grid-cols-${eeNComp(g) === 4 ? 2 : 3} gap-2 mb-3">${[...Array(eeNComp(g)).keys()].map(i => dt(i, (d.comp || [])[i])).join('')}</div>
     <label class="flex items-center gap-2 text-sm mb-2"><input id="eg-fora" type="checkbox" ${d.fora ? 'checked' : ''}> Fora do rodízio (afastado, cedido etc.)</label>
     <div><label class="block text-xs text-slate-500 mb-1">Observação</label><input id="eg-obs" value="${esc(d.obs || '')}" class="${INPUT}"></div>`,
-    `<div class="flex gap-2 justify-between flex-wrap"><button onclick="eeGuardaAuto('${gid}')" class="${BTN_G}">Voltar ao automático</button><div class="flex gap-2"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="eeGuardaSalvar('${gid}')" class="${BTN_P}">Salvar</button></div></div>`, true);
+    `<div class="flex gap-2 justify-between flex-wrap"><div class="flex gap-2"><button onclick="eeGuardaAuto('${gid}')" class="${BTN_G}">Voltar ao automático</button><button onclick="eeVerMes('${gid}')" class="${BTN_G}">Ver mês</button></div><div class="flex gap-2"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="eeGuardaSalvar('${gid}')" class="${BTN_P}">Salvar</button></div></div>`, true);
 }
 function eeGuardaSalvar(gid) {
   const ee = eeAtual(), d = ee.g[gid]; if (!exigir('especial.editar')) return; d.fora = $('eg-fora').checked; d.obs = $('eg-obs').value.trim();
