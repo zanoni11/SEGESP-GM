@@ -5352,16 +5352,17 @@ function eeTurnos(ee, g) {                       // plantões do ciclo do guarda
   const r = []; for (let k = eeAdd(ee.inicio, -12); k <= eeAdd(ee.fim, 10); k = eeAdd(k, 1)) { const t = eeBase(g, k); if (t === 'D' || t === 'N') r.push({ k, t }); }
   return (_eeMemo[ch] = r);
 }
+const eeNComp = g => ['Vigias', 'Defesa Civil'].includes((getEquipe(g.equipeId) || {}).grupo) ? 4 : 3;   // vigias e defesa civil (ciclo 2x2) compensam 4 plantões
 function eeBloco(ee, g) {                         // folga contínua do guarda (dia seguinte ao último plantão trabalhado até o dia anterior ao retorno)
-  const c = (ee.g[g.id] || {}).comp || []; if (c.length !== 3) return null;
+  const c = (ee.g[g.id] || {}).comp || [], n = eeNComp(g); if (c.length !== n) return null;
   const S = eeTurnos(ee, g), i = S.findIndex(s => s.k === c[0]); if (i < 0) return null;
-  const prev = S[i - 1], nxt = S[i + 3], bs = prev ? eeAdd(prev.k, 1) : eeAdd(c[0], -3), be = nxt ? eeAdd(nxt.k, -1) : null;
+  const prev = S[i - 1], nxt = S[i + n], bs = prev ? eeAdd(prev.k, 1) : eeAdd(c[0], -3), be = nxt ? eeAdd(nxt.k, -1) : null;
   return { bs, be, len: be ? eeDif(bs, be) + 1 : null, ret: nxt ? nxt.k : null };
 }
-function eeCands(ee, g, gr) {                     // blocos possíveis (3 plantões seguidos) para o grupo
-  const S = eeTurnos(ee, g), alvo = gr === 'N' ? ee.natal : ee.anoNovo, pri = alvo.dias[0], ult = alvo.dias[alvo.dias.length - 1], lim = gr === 'N' ? 8 : 6, out = [];
-  for (let i = 0; i + 2 < S.length; i++) {
-    const tri = [S[i].k, S[i + 1].k, S[i + 2].k], prev = S[i - 1], nxt = S[i + 3];
+function eeCands(ee, g, gr) {                     // blocos possíveis (3 plantões seguidos, ou 4 para vigias e defesa civil) para o grupo
+  const n = eeNComp(g), S = eeTurnos(ee, g), alvo = gr === 'N' ? ee.natal : ee.anoNovo, pri = alvo.dias[0], ult = alvo.dias[alvo.dias.length - 1], lim = gr === 'N' ? 8 : 6, out = [];
+  for (let i = 0; i + n - 1 < S.length; i++) {
+    const tri = S.slice(i, i + n).map(s => s.k), prev = S[i - 1], nxt = S[i + n];
     if (tri[0] < alvo.inicioComp || tri[0] > eeAdd(alvo.inicioComp, lim)) continue;
     const bs = prev ? eeAdd(prev.k, 1) : eeAdd(tri[0], -3), be = nxt ? eeAdd(nxt.k, -1) : null;
     if (bs > pri || (be && be < ult)) continue;
@@ -5394,10 +5395,10 @@ function eeValida(ee, g) {                        // pendências do guarda (avis
   const d = ee.g[g.id] || {}, p = [], c = d.comp || []; if (!eeEntra(ee, g)) return p;
   if (!d.grupo) return ['sem grupo (Natal ou Ano Novo)'];
   const alvo = d.grupo === 'N' ? ee.natal : ee.anoNovo, S = eeTurnos(ee, g);
-  if (c.length !== 3) return ['precisa de 3 escalas compensadas'];
+  const n = eeNComp(g); if (c.length !== n) return [`precisa de ${n} escalas compensadas`];
   const idx = c.map(k => S.findIndex(s => s.k === k));
   if (idx.some(i => i < 0)) { p.push('há data que não é plantão deste guarda'); return p; }
-  if (idx[1] !== idx[0] + 1 || idx[2] !== idx[0] + 2) p.push('as 3 escalas não são seguidas no ciclo');
+  if (idx.some((v, j) => v !== idx[0] + j)) p.push(`as ${n} escalas não são seguidas no ciclo`);
   if (c[0] < alvo.inicioComp) p.push('começa antes de ' + brCurto(parseISO(alvo.inicioComp)));
   const b = eeBloco(ee, g); if (b && (b.bs > alvo.dias[0] || (b.be && b.be < alvo.dias[alvo.dias.length - 1]))) p.push('a folga não cobre ' + alvo.dias.map(k => brCurto(parseISO(k))).join(' e '));
   alvo.dias.forEach(k => { if (S.some(s => s.k === k) && !c.includes(k)) p.push('trabalha em ' + brCurto(parseISO(k))); });
@@ -5610,7 +5611,7 @@ function eeAbaResumo(ee, r, pode) {
     ${chip('supervisor coberto por outro', r.supCob)}${chip('supervisor a definir', r.supSem, r.supSem ? 'text-amber-700' : 'text-emerald-700')}${chip(`repetem ${ee.anoAnt}`, r.rep)}${chip(`invertidos em relação a ${ee.anoAnt}`, r.inv)}${r.romu ? chip('dias com ROMU abaixo de 2', r.romu, 'text-red-700') : ''}${r.central ? chip('turnos da Central sem ninguém', r.central, 'text-red-700') : ''}${r.compInv ? chip('compensadas fora do plantão', r.compInv, 'text-red-700') : ''}${chip('supervisores no rodízio', r.supRod)}${chip('extras de supervisor', r.supExtras, r.supExtras ? 'text-amber-700' : '')}</div>
     ${r.semHist ? `<div class="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2 mb-3">${r.semHist} guarda(s) sem registro de ${ee.anoAnt}: são distribuídos para equilibrar as metades. ${pode ? 'Preencha na aba Folgas ou use <b>Mais ▾ › Importar histórico</b>.' : ''}</div>` : ''}
     ${pode ? `<div class="flex gap-2 flex-wrap mb-3"><button onclick="eeAuto()" class="${BTN_P}">Montar automaticamente</button><button onclick="eeRefazer()" class="${BTN_O}">Refazer coberturas</button><button onclick="eeOtimizar()" class="${BTN_O}">Otimizar</button></div>
-    <p class="text-xs text-slate-500 mb-3"><b>Montar automaticamente</b> inverte o ano anterior, divide cada equipe ao meio e escolhe os 3 plantões seguidos de cada guarda (quem foi fixado à mão não muda). <b>Refazer coberturas</b> só refaz PPC, supervisor e extras. <b>Otimizar</b> tenta reduzir extras (leva alguns segundos).</p>` : ''}
+    <p class="text-xs text-slate-500 mb-3"><b>Montar automaticamente</b> inverte o ano anterior, divide cada equipe ao meio e escolhe os 3 plantões seguidos de cada guarda (4 para vigias e defesa civil) (quem foi fixado à mão não muda). <b>Refazer coberturas</b> só refaz PPC, supervisor e extras. <b>Otimizar</b> tenta reduzir extras (leva alguns segundos).</p>` : ''}
     <div class="${CARD} p-3"><div class="font-semibold text-sm mb-2">Natal × Ano Novo por equipe</div><table class="w-full text-xs"><thead><tr class="text-left text-slate-500"><th>Equipe</th><th class="text-center">${ee.anoAnt} Natal</th><th class="text-center">${ee.anoAnt} A.Novo</th><th class="text-center">${ee.ano} Natal</th><th class="text-center">${ee.ano} A.Novo</th></tr></thead><tbody>
     ${un.map(u => { const c = (f, v) => u.membros.filter(g => D(g)[f] === v).length, n = c('grupo', 'N'), a = c('grupo', 'A'), des = Math.abs(n - a) > 1; return `<tr class="border-t border-slate-100"><td class="py-1">${esc(u.nome)}</td><td class="text-center">${c('h', 'N')}</td><td class="text-center">${c('h', 'A')}</td><td class="text-center ${des ? 'text-amber-700 font-semibold' : ''}">${n}</td><td class="text-center ${des ? 'text-amber-700 font-semibold' : ''}">${a}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
@@ -5738,7 +5739,7 @@ function eeSetGrupo(gid, v) {
 }
 function eeAuto() {
   if (!exigir('especial.editar')) return; const ee = eeAtual();
-  confirmar('Montar automaticamente', `<p>Refaz os grupos (Natal / Ano Novo), os 3 plantões de cada guarda e as coberturas. Guardas <b>fixados</b> à mão não mudam; coberturas colocadas à mão são mantidas se ainda valerem.</p>`, () => { eeRecalc(ee, true); auditar('Escala especial', ee.nome, 'montou automaticamente'); save(); render(); toast('Escala montada'); }, 'Montar');
+  confirmar('Montar automaticamente', `<p>Refaz os grupos (Natal / Ano Novo), os plantões compensados de cada guarda (3, ou 4 para vigias e defesa civil) e as coberturas. Guardas <b>fixados</b> à mão não mudam; coberturas colocadas à mão são mantidas se ainda valerem.</p>`, () => { eeRecalc(ee, true); auditar('Escala especial', ee.nome, 'montou automaticamente'); save(); render(); toast('Escala montada'); }, 'Montar');
 }
 function eeRefazer() { if (!exigir('especial.editar')) return; const ee = eeAtual(); eeRecalc(ee, false); save(); render(); toast('Coberturas refeitas'); }
 function eeOtimizar() {
@@ -5784,17 +5785,17 @@ function eeFormGuarda(gid) {
   const ee = eeAtual(), g = getGuarda(gid), d = ee.g[gid]; if (!ee || !g) return;
   const lista = ['N', 'A'].flatMap(x => eeCands(ee, g, x)); window._eeLista = lista;
   const dt = (i, v) => `<input id="eg-d${i}" type="date" value="${v || ''}" class="${INPUT}">`;
-  openModal(`${eeNome(g)} — plantões do recesso`, `<div class="text-xs text-slate-500 mb-2">Escolha um dos blocos possíveis (3 plantões seguidos que cobrem o feriado) ou digite as datas. O guarda fica <b>fixado</b>: o automático não mexe mais nele.</div>
+  openModal(`${eeNome(g)} — plantões do recesso`, `<div class="text-xs text-slate-500 mb-2">Escolha um dos blocos possíveis (${eeNComp(g)} plantões seguidos que cobrem o feriado) ou digite as datas. O guarda fica <b>fixado</b>: o automático não mexe mais nele.</div>
     <div class="mb-3">${lista.map((c, i) => `<label class="flex gap-2 items-start py-2 border-b border-slate-100 text-sm"><input type="radio" name="eg-c" value="${i}" class="mt-1" ${c.gr === d.grupo && c.comp.join() === (d.comp || []).join() ? 'checked' : ''}><span><b>${EE_ROT[c.gr]}</b> · ${c.comp.map(k => eeDia(k) + ' ' + eeBase(g, k)).join(' · ')}<br><span class="text-xs text-slate-500">folga ${brCurto(parseISO(c.bs))}${c.be ? ` a ${brCurto(parseISO(c.be))} (${c.len} dias), retorno ${eeDia(c.ret)}` : ''}${c.custo > 12 ? ' · fora do ideal' : ''}</span></span></label>`).join('') || '<div class="text-sm text-slate-500">Nenhum bloco válido neste período.</div>'}</div>
-    <div class="text-sm font-medium mb-1">Ou digite as 3 datas (plantões compensados)</div><div class="grid grid-cols-3 gap-2 mb-3">${[0, 1, 2].map(i => dt(i, (d.comp || [])[i])).join('')}</div>
+    <div class="text-sm font-medium mb-1">Ou digite as ${eeNComp(g)} datas (plantões compensados)</div><div class="grid grid-cols-${eeNComp(g) === 4 ? 2 : 3} gap-2 mb-3">${[...Array(eeNComp(g)).keys()].map(i => dt(i, (d.comp || [])[i])).join('')}</div>
     <label class="flex items-center gap-2 text-sm mb-2"><input id="eg-fora" type="checkbox" ${d.fora ? 'checked' : ''}> Fora do rodízio (afastado, cedido etc.)</label>
     <div><label class="block text-xs text-slate-500 mb-1">Observação</label><input id="eg-obs" value="${esc(d.obs || '')}" class="${INPUT}"></div>`,
     `<div class="flex gap-2 justify-between flex-wrap"><button onclick="eeGuardaAuto('${gid}')" class="${BTN_G}">Voltar ao automático</button><div class="flex gap-2"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="eeGuardaSalvar('${gid}')" class="${BTN_P}">Salvar</button></div></div>`, true);
 }
 function eeGuardaSalvar(gid) {
   const ee = eeAtual(), d = ee.g[gid]; if (!exigir('especial.editar')) return; d.fora = $('eg-fora').checked; d.obs = $('eg-obs').value.trim();
-  const datas = [0, 1, 2].map(i => $('eg-d' + i).value).filter(Boolean).sort(), r = document.querySelector('input[name="eg-c"]:checked');
-  if (datas.length === 3 && datas.join() !== (d.comp || []).join()) { d.comp = datas; d.fixo = true; }
+  const n = eeNComp(getGuarda(gid)), datas = [...Array(n).keys()].map(i => $('eg-d' + i).value).filter(Boolean).sort(), r = document.querySelector('input[name="eg-c"]:checked');
+  if (datas.length === n && datas.join() !== (d.comp || []).join()) { d.comp = datas; d.fixo = true; }
   else if (r && window._eeLista[+r.value]) { const c = window._eeLista[+r.value]; if (c.comp.join() !== (d.comp || []).join() || c.gr !== d.grupo) { d.grupo = c.gr; d.comp = c.comp.slice(); d.fixo = true; } }
   closeModal(); eeSalvar(ee, true);
 }
@@ -5936,12 +5937,25 @@ function eeFolhaHTML(ee) {
     <table class="ee-q" style="margin-top:6px"><thead><tr><th>Supervisor</th><th>Equipe</th><th>Plantões no ciclo</th><th>Coberturas extra previstas</th><th>Coberto por</th><th>Comp.</th><th>Folga contínua</th><th>Natal</th><th>Ano Novo</th></tr></thead><tbody>
     ${S.map(s => `<tr><td><b>${esc(eeNome(s.g))}</b></td><td>${esc(s.equipe)}</td><td>${s.proprios.length ? s.proprios.map(r => `${sh(r.k)} ${r.c}`).join(', ') : '—'}</td><td>${s.cobre.length ? s.cobre.map(c => `${sh(c.k)} ${tn(c.t)} (${esc(c.eq)})`).join(', ') : '—'}</td><td>${s.cobertoPor.length ? s.cobertoPor.map(c => `${sh(c.k)} ${tn(c.t)}: ${c.por ? esc(c.por) : '<span class="ee-vm">A DEFINIR</span>'}`).join(', ') : '—'}</td><td>${s.comp}</td><td>${s.bloco && s.bloco.be ? `${sh(s.bloco.bs)} a ${sh(s.bloco.be)} · volta ${sh(s.bloco.ret)}` : '—'}</td><td>${simNao(s.natal)}</td><td>${simNao(s.anoNovo)}</td></tr>`).join('')}</tbody></table></div>` : '';
   const rs = eeResumo(ee);
+  const sec = k => !(ee.secoes && ee.secoes[k] === false);
   return `${cabecalhoOficial('ESCALA ESPECIAL — ' + ee.nome.toUpperCase(), `${br(ee.inicio)} a ${br(ee.fim)}`, `Dias de trabalho e de compensação durante a semana especial · emitida em ${br(new Date())}`)}
-    <div class="ee-regra"><b>Regra:</b> cada guarda compensa <b>3 plantões seguidos</b> do seu ciclo; com os dias normais de folga, a folga contínua cobre o <b>Natal (${ee.natal.dias.map(sh).join(' e ')})</b> ou o <b>Ano Novo (${ee.anoNovo.dias.map(sh).join(' e ')})</b>, e quem está de folga não trabalha no feriado do seu grupo. Cada equipe se divide ao meio (metade no Natal, metade no Ano Novo), alternando em relação a ${ee.anoAnt}. O expediente folga de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}. As equipes de rua fecham no mínimo <b>${ee.minimo.agentes} agentes + supervisor</b>, dia e noite, completando com o PPC (jornada trocada) e, se faltar, com extra.${rs.pend ? ` <b style="color:#b3261e">Pendências: ${rs.pend} plantão(ões) de rua ainda precisam de cobertura.</b>` : ''}</div>
-    <div class="ee-leg">${leg.map(([c, t]) => `<span><span class="c" style="background:${EE_CEL[cor[c]][0]};color:${EE_CEL[cor[c]][1]}">${c}</span>${t}</span>`).join('')}<span><span class="c" style="background:#b3261e;color:#fff">dia</span>feriado do recesso</span></div>
-    ${tabelas}${eeCentralGs(ee).length ? `<div class="ee-sec"><h3>Central de Monitoramento — em serviço por turno (mínimo 1)</h3><table class="ee-q"><thead><tr><th>Data</th><th>Diurno</th><th>Noturno</th><th>Presentes</th></tr></thead><tbody>${eeDias(ee).map(k => { const C = eeCentral(ee), d = C.find(x => x.k === k && x.t === 'D'), n = C.find(x => x.k === k && x.t === 'N'), v = x => x.esc.length ? (x.falta ? '<span class="ee-vm">0 — SEM NINGUÉM</span>' : x.pres.length + '/' + x.esc.length) : '—'; return `<tr${d.falta || n.falta ? ' class="ee-pd"' : ''}><td>${eeDia(k)}</td><td>${v(d)}</td><td>${v(n)}</td><td>${esc([...d.pres, ...n.pres].map(eeNome).join(', '))}</td></tr>`; }).join('')}</tbody></table></div>` : ''}${supQ}${quadro}${motoQ}${assinaturaHTML('Pinhais, ' + dataExtenso(new Date()))}`;
+    ${sec('regra') ? `<div class="ee-regra"><b>Regra:</b> cada guarda compensa <b>3 plantões seguidos</b> do seu ciclo (<b>4</b> para vigias e defesa civil, de ciclo 2x2); com os dias normais de folga, a folga contínua cobre o <b>Natal (${ee.natal.dias.map(sh).join(' e ')})</b> ou o <b>Ano Novo (${ee.anoNovo.dias.map(sh).join(' e ')})</b>, e quem está de folga não trabalha no feriado do seu grupo. Cada equipe se divide ao meio (metade no Natal, metade no Ano Novo), alternando em relação a ${ee.anoAnt}. O expediente folga de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}. As equipes de rua fecham no mínimo <b>${ee.minimo.agentes} agentes + supervisor</b>, dia e noite, completando com o PPC (jornada trocada) e, se faltar, com extra.${rs.pend ? ` <b style="color:#b3261e">Pendências: ${rs.pend} plantão(ões) de rua ainda precisam de cobertura.</b>` : ''}</div>
+    <div class="ee-leg">${leg.map(([c, t]) => `<span><span class="c" style="background:${EE_CEL[cor[c]][0]};color:${EE_CEL[cor[c]][1]}">${c}</span>${t}</span>`).join('')}<span><span class="c" style="background:#b3261e;color:#fff">dia</span>feriado do recesso</span></div>` : ''}
+    ${sec('equipes') ? tabelas : ''}${sec('central') && eeCentralGs(ee).length ? `<div class="ee-sec"><h3>Central de Monitoramento — em serviço por turno (mínimo 1)</h3><table class="ee-q"><thead><tr><th>Data</th><th>Diurno</th><th>Noturno</th><th>Presentes</th></tr></thead><tbody>${eeDias(ee).map(k => { const C = eeCentral(ee), d = C.find(x => x.k === k && x.t === 'D'), n = C.find(x => x.k === k && x.t === 'N'), v = x => x.esc.length ? (x.falta ? '<span class="ee-vm">0 — SEM NINGUÉM</span>' : x.pres.length + '/' + x.esc.length) : '—'; return `<tr${d.falta || n.falta ? ' class="ee-pd"' : ''}><td>${eeDia(k)}</td><td>${v(d)}</td><td>${v(n)}</td><td>${esc([...d.pres, ...n.pres].map(eeNome).join(', '))}</td></tr>`; }).join('')}</tbody></table></div>` : ''}${sec('supervisores') ? supQ : ''}${sec('plantoes') ? quadro : ''}${sec('romu') ? motoQ : ''}${sec('assinatura') ? assinaturaHTML('Pinhais, ' + dataExtenso(new Date())) : ''}`;
 }
-function eeImprimir() { docTab = 'especial'; go('docsup'); }
+const EE_SECOES = [['regra', 'Regra e legenda'], ['equipes', 'Tabelas das equipes (dias de trabalho e compensadas)'], ['central', 'Central de Monitoramento'], ['supervisores', 'Quadro de supervisores'], ['plantoes', 'Plantões das equipes de rua (efetivo e coberturas)'], ['romu', 'ROMU e GTAM'], ['assinatura', 'Local, data e assinatura']];
+function eeImprimir() {
+  const ee = eeAtual(), sel = ee.secoes || {};
+  openModal('Seções do relatório', `<p class="text-xs text-slate-500 mb-2">Escolha o que entra no PDF da escala. A escolha fica salva para esta escala.</p>${EE_SECOES.map(([k, t]) => `<label class="flex items-center gap-2 text-sm py-1"><input type="checkbox" class="ee-sec-op" value="${k}" ${sel[k] === false ? '' : 'checked'}> ${t}</label>`).join('')}`,
+    `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="eeImprimirGerar()" class="${BTN_P}">Gerar relatório</button></div>`, true);
+}
+function eeImprimirGerar() {
+  const ee = eeAtual(), marc = new Set([...document.querySelectorAll('.ee-sec-op:checked')].map(i => i.value));
+  if (!marc.size) { toast('Marque ao menos uma seção', 'error'); return; }
+  ee.secoes = Object.fromEntries(EE_SECOES.map(([k]) => [k, marc.has(k)]));
+  if (can('especial.editar')) save();
+  closeModal(); docTab = 'especial'; go('docsup');
+}
 
 /* ---------- Cor da equipe (propriedade da equipe; vale em todo o app) ---------- */
 const corEq = id => { const e = id && getEquipe(id); return e && ipmHexOk(e.cor) ? e.cor.toUpperCase() : ''; };
