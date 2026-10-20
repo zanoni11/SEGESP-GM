@@ -176,11 +176,11 @@ const srv = http.createServer((req, res) => { const f = path.join(RAIZ, decodeUR
     const pdf = await page.evaluate(() => { const h = eeFolhaHTML(eeAtual()); return { rasc: /RASCUNHO/.test(h), grade: /Cobertura operacional por data e turno/.test(h), def: /Déficits e necessidades potenciais/.test(h), teste: /MODO DE TESTE LOCAL/.test(h) }; }); ok(pdf.rasc && pdf.grade && pdf.def && pdf.teste, 'PDF (impressão) traz a situação, a grade e os déficits', pdf); await ctx.close(); }
 
   titulo('E12. Telas legíveis no celular (sem rolagem horizontal da página) e no computador');
-  for (const w of [390, 1280]) { const { ctx, page } = await nova(); await page.setViewportSize({ width: w, height: 900 }); const r = await page.evaluate(() => { const out = {}; ['dia', 'resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; eeF.dia = t === 'grade' ? '2026-12-24' : ''; render(); out[t] = document.documentElement.scrollWidth - document.documentElement.clientWidth; }); return out; });
+  for (const w of [390, 1280]) { const { ctx, page } = await nova(); await page.setViewportSize({ width: w, height: 900 }); const r = await page.evaluate(() => { const out = {}; ['dia', 'equipe', 'resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; eeF.dia = t === 'grade' ? '2026-12-24' : ''; render(); out[t] = document.documentElement.scrollWidth - document.documentElement.clientWidth; }); return out; });
     ok(Object.values(r).every(v => v <= 1), `largura ${w}px: nenhuma aba estoura a largura da página`, r); await ctx.close(); }
 
   titulo('E13. Quem só consulta não grava nada ao abrir a Escala Especial (sem escrita espúria)');
-  { const { ctx, page } = await nova(); const r = await page.evaluate(() => { const ee = eeAtual(), antes = JSON.stringify(state.escalasEspeciais); _perfilSb = Object.assign({}, _perfilSb, { perfil: 'OPERACIONAL' }); ['dia', 'resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; render(); }); eeLinhaDetalhe(eeAnalise(ee).gr.dias[0].linhas[0].id); closeModal(); return { igual: antes === JSON.stringify(state.escalasEspeciais), pode: can('especial.editar'), toast: document.getElementById('toasts').innerText }; });
+  { const { ctx, page } = await nova(); const r = await page.evaluate(() => { const ee = eeAtual(), antes = JSON.stringify(state.escalasEspeciais); _perfilSb = Object.assign({}, _perfilSb, { perfil: 'OPERACIONAL' }); ['dia', 'equipe', 'resumo', 'folgas', 'grade', 'deficits', 'rua', 'comp', 'registro'].forEach(t => { eeTab = t; render(); }); eeLinhaDetalhe(eeAnalise(ee).gr.dias[0].linhas[0].id); closeModal(); return { igual: antes === JSON.stringify(state.escalasEspeciais), pode: can('especial.editar'), toast: document.getElementById('toasts').innerText }; });
     ok(r.igual && !r.pode, 'abrir todas as abas como OPERACIONAL não altera a escala', r); await ctx.close(); }
 
   titulo('E14. Aba Dia: serviço do dia com horários e edição com efeito imediato');
@@ -206,6 +206,43 @@ const srv = http.createServer((req, res) => { const f = path.join(RAIZ, decodeUR
     ok(r2.barra && typeof r2.depois.def === 'number', 'a barra de indicadores atualiza e compara com a abertura', r2);
     ok(r2.modalSemPadrao, 'sem motivo preenchido o sistema continua perguntando', r2);
     await ctx.close(); }
+
+  titulo('E15. Aba Equipes: alterar por equipe, trocar o recesso entre dois guardas e relatórios por equipe');
+  { const { ctx, page } = await nova(); const r = await page.evaluate(() => {
+      const ee = eeAtual(); eeAbrir(ee.id); eeTab = 'equipe'; const un = eeUnidades(ee); eeEqSel = un[0].chave; render();
+      const out = { texto: document.getElementById('main').innerText, nUn: un.length, nBotoes: document.querySelectorAll('button[aria-pressed]').length };
+      // troca: acha um par da mesma equipe em períodos diferentes cuja troca seja válida
+      let par = null; for (const u of un) { for (const a of u.membros) for (const b of u.membros) { const da = ee.g[a.id], db = ee.g[b.id]; if (par || a.id === b.id || !da.grupo || !db.grupo || da.grupo === db.grupo) continue; const c = eeTrocaCalc(ee, a, b); if (!c.a.erros.length && !c.b.erros.length) par = { u, a, b }; } if (par) break; }
+      out.par = !!par; if (par) {
+        const D = g => ee.g[g.id], conta = (u, v) => u.membros.filter(m => D(m).grupo === v).length, antes = [D(par.a).grupo, D(par.b).grupo], n0 = conta(par.u, 'N'), a0 = conta(par.u, 'A');
+        window._eeMotivoPadrao = 'troca de teste'; eeSel = ee.id; eeFormTroca(par.a.id); out.modal = !!document.getElementById('et-outro'); document.getElementById('et-outro').value = par.b.id; eeTrocaPrev(par.a.id); out.previa = document.getElementById('et-prev').innerText.length > 20;
+        eeTrocaConfirmar(par.a.id); eeReset();
+        out.trocou = D(par.a).grupo === antes[1] && D(par.b).grupo === antes[0]; out.mesmaDivisao = conta(par.u, 'N') === n0 && conta(par.u, 'A') === a0; out.fixos = !!D(par.a).fixo && !!D(par.b).fixo;
+        out.erros = eeErros(ee, par.a).length + eeErros(ee, par.b).length; const lg = eeOp(ee).log.slice(-1)[0]; out.log = lg && lg.acao; out.logMotivo = lg && lg.motivo;
+      }
+      // automático só desta equipe: as outras não mudam
+      const alvo = un[0], outras = un.slice(1).flatMap(u => u.membros).map(g => [g.id, JSON.stringify(ee.g[g.id])]); alvo.membros.forEach(g => { ee.g[g.id].grupo = ''; ee.g[g.id].comp = []; ee.g[g.id].fixo = false; });
+      eeAutoGrupos(ee, alvo.chave); eeAutoComp(ee, alvo.chave); eeReset();
+      out.autoEquipe = alvo.membros.every(g => ee.g[g.id].grupo) && outras.every(([id, j]) => JSON.stringify(ee.g[id]) === j);
+      // início do recesso da equipe
+      eeTab = 'equipe'; eeEqSel = alvo.chave; render(); document.getElementById('eq-ini-n').value = ee.natal.inicioComp; eeSalvarInicioEquipe(alvo.chave); eeReset();
+      out.inicioEq = ((eeOp(ee).inicio[alvo.chave] || {}).N || {}).inicio === ee.natal.inicioComp;
+      // relatórios
+      const h = eeFolhaHTML(ee, un[0].chave), hAll = eeFolhaHTML(ee); out.folhaEq = h.includes('EQUIPE ' + un[0].chave.toUpperCase()) && !h.includes(un[1].nome) && hAll.includes(un[1].nome) && !/Cobertura operacional por data e turno/.test(h);
+      const t = eeTextoEquipe(ee, un[0].chave); out.texto2 = t.includes(un[0].nome) && un[0].membros.every(g => t.includes(eeNome(g))) && /compensa/.test(t) && !t.includes(un[1].nome);
+      const L = eeLinhasEquipe(ee, un[0].chave); out.linhas = L.length >= un[0].membros.length + 1 && L[0].length >= eeDias(ee).length + 11;
+      eeFolhaEq = un[0].chave; docTab = 'especial'; out.nomeArq = nomeArquivoDoc(); eeFolhaEq = ''; docTab = 'edital';
+      return out; });
+    ok(r.nBotoes === r.nUn && /Início do recesso desta equipe/.test(r.texto) && /Como fica a equipe no recesso/.test(r.texto), 'a aba Equipes mostra uma equipe por vez, com início do recesso e o calendário', { nUn: r.nUn, nBotoes: r.nBotoes });
+    ok(r.par && r.modal && r.previa, 'abre a troca de recesso e mostra a prévia dos dois guardas', r);
+    ok(r.trocou && r.mesmaDivisao && r.fixos && r.erros === 0, 'a troca inverte os períodos, mantém a divisão da equipe e deixa os dois dentro dos 9 dias', r);
+    ok(r.log === 'troca de recesso entre guardas' && r.logMotivo === 'troca de teste', 'a troca vai para o Registro com o motivo', r);
+    ok(r.autoEquipe, 'o automático por equipe refaz só aquela equipe', r);
+    ok(r.inicioEq, 'o início do recesso é gravado por equipe', r);
+    ok(r.folhaEq, 'a folha por equipe traz só a equipe escolhida (a completa traz todas)', r);
+    ok(r.texto2 && r.linhas, 'texto para WhatsApp e linhas do Excel por equipe trazem só a equipe', r);
+    ok(/Equipe_/.test(r.nomeArq), 'o arquivo do relatório leva o nome da equipe', r.nomeArq);
+    ok(await page.evaluate(() => (window.__erros || []).length === 0), 'sem erros de JS', null); await ctx.close(); }
 
   await browser.close(); srv.close();
   console.log(`\n${falhas ? '❌' : '✅'} ${passou} verificações passaram, ${falhas} falharam${pulou ? ', ' + pulou + ' puladas' : ''}`); process.exit(falhas ? 1 : 0);

@@ -75,3 +75,10 @@ Foram implementadas de forma configurável, com a interpretação abaixo. Confir
 - A divisão automática e a escolha de blocos consideram um guarda de cada vez; a otimização global dos extras é a existente ("Otimizar").
 - Importação `.xlsx` lê a primeira planilha; se a biblioteca de planilhas não carregou (sem internet), use CSV. O Excel exportado cai para CSV nesse caso.
 - Não há chamadas a hora extra: ao decidir "extra", lance a hora extra manualmente no módulo Horas Extras.
+
+## Abas Dia e Equipes
+
+- **Dia**: escolha a data e veja todos os guardas em serviço, com horário, por turno e equipe (recesso, afastados e folga ficam recolhidos). A barra do topo mostra os déficits, guardas faltando, conflitos e propostas, com a variação desde que a escala foi aberta. Propostas do dia podem ser autorizadas ou recusadas ali mesmo.
+- **Equipes**: uma equipe por vez. Mostra a divisão Natal × Ano Novo, o início do recesso da equipe (vazio = padrão), cada guarda com seus plantões compensados e a folga contínua, e o calendário colorido da equipe. Botões: **Trocar** (dois guardas da mesma equipe trocam de período; a divisão fica igual e o sistema confere os 9 dias de cada um), **Plantões** (ajuste fino de um guarda) e **Automático desta equipe** (não mexe nas outras).
+- **Relatórios por equipe**: folha para imprimir/PDF (só a equipe escolhida), texto para WhatsApp (copiar e colar) e Excel (uma aba da equipe; em Excel ▾ há também "uma aba por equipe").
+- **Motivo das alterações** (campo no topo das duas abas): preenchido, as mudanças valem na hora, sem pedir o motivo a cada vez; o motivo e o impacto continuam indo para o Registro. Vazio, o sistema pergunta.

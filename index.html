@@ -3301,9 +3301,9 @@ const DOC_CSS = `
 let docNumBoletim = '', docIncluirExtras = true, docMotivoExtras = false, docTotaisExtras = true, docIncluirRequal = false;
 function garantirCssDoc() { if (!$('doc-css')) { const s = document.createElement('style'); s.id = 'doc-css'; s.textContent = DOC_CSS + DOC_CSS_SUP + DOC_CSS_EE; document.head.appendChild(s); } }
 const docPaisagem = () => docTab === 'especial' || docTab === 'ipmfinal';
-function folhaAtual() { if (docTab === 'ipmfinal') return ipmFinalHTML(ipmMes.getFullYear(), ipmMes.getMonth()); if (docTab === 'especial') return eeFolhaHTML(eeAtual()); if (docTab === 'ipm') return ipmFolhaHTML(ipmMes.getFullYear(), ipmMes.getMonth()); if (docTab === 'ci' || docTab === 'superv') return folhaSuperv(); return docTab === 'edital' ? editalHTML(docMes.getFullYear(), docMes.getMonth()) : boletimHTML(boletimDados(iso(docDia))); }
-function nomeArquivoDoc() { if (docTab === 'ipmfinal') return `Escala_final_com_trocas_${MESES_UP[ipmMes.getMonth()]}_${ipmMes.getFullYear()}`; if (docTab === 'especial') { const e = eeAtual(); return 'Escala_Especial_' + (e ? e.nome.replace(/[^\w]+/g, '_') : ''); } if (docTab === 'ipm') return `${p2(ipmMes.getMonth() + 1)}-${MESES_UP[ipmMes.getMonth()]}_-_Escala_IPM`; if (docTab === 'ci') { const c = getCI(docCI); return `CI_${c ? c.numero.replace('/', '-') : ''}`; } if (docTab === 'superv') { const s = getSup(docSup); return `Supervisao_${s ? s.data + '_' + s.turno : ''}`; } return docTab === 'edital' ? `Escala_${MESES_EXT[docMes.getMonth()]}_${docMes.getFullYear()}` : `Boletim_${iso(docDia)}`; }
-function rodapeDoc() { if (docTab === 'ipmfinal') return `${state.instituicao || ''} · Escala final com trocas · ${MESES_UP[ipmMes.getMonth()]}/${ipmMes.getFullYear()}`; if (docTab === 'especial') { const e = eeAtual(); return `${state.instituicao || ''} · Escala Especial · ${e ? e.nome : ''}`; } if (docTab === 'ipm') return `${state.instituicao || ''} · Escala IPM · ${MESES_UP[ipmMes.getMonth()]}/${ipmMes.getFullYear()}`; if (docTab === 'ci') { const c = getCI(docCI); return `${state.instituicao || ''} · Comunicação Interna nº ${c ? c.numero : ''}`; } if (docTab === 'superv') { const s = getSup(docSup); return `${state.instituicao || ''} · Supervisão de Dia · ${s ? br(parseISO(s.data)) + ' · ' + SUP_TURNO[s.turno] : ''}`; } return docTab === 'edital' ? `${state.instituicao || ''} · Escala de Serviço · ${MESES_EXT[docMes.getMonth()]}/${docMes.getFullYear()}` : `${state.instituicao || ''} · Boletim Interno · ${br(docDia)}`; }
+function folhaAtual() { if (docTab === 'ipmfinal') return ipmFinalHTML(ipmMes.getFullYear(), ipmMes.getMonth()); if (docTab === 'especial') return eeFolhaHTML(eeAtual(), eeFolhaEq); if (docTab === 'ipm') return ipmFolhaHTML(ipmMes.getFullYear(), ipmMes.getMonth()); if (docTab === 'ci' || docTab === 'superv') return folhaSuperv(); return docTab === 'edital' ? editalHTML(docMes.getFullYear(), docMes.getMonth()) : boletimHTML(boletimDados(iso(docDia))); }
+function nomeArquivoDoc() { if (docTab === 'ipmfinal') return `Escala_final_com_trocas_${MESES_UP[ipmMes.getMonth()]}_${ipmMes.getFullYear()}`; if (docTab === 'especial') { const e = eeAtual(); return 'Escala_Especial_' + (e ? e.nome.replace(/[^\w]+/g, '_') : '') + (eeFolhaEq ? '_Equipe_' + eeFolhaEq.replace(/[^\w]+/g, '_') : ''); } if (docTab === 'ipm') return `${p2(ipmMes.getMonth() + 1)}-${MESES_UP[ipmMes.getMonth()]}_-_Escala_IPM`; if (docTab === 'ci') { const c = getCI(docCI); return `CI_${c ? c.numero.replace('/', '-') : ''}`; } if (docTab === 'superv') { const s = getSup(docSup); return `Supervisao_${s ? s.data + '_' + s.turno : ''}`; } return docTab === 'edital' ? `Escala_${MESES_EXT[docMes.getMonth()]}_${docMes.getFullYear()}` : `Boletim_${iso(docDia)}`; }
+function rodapeDoc() { if (docTab === 'ipmfinal') return `${state.instituicao || ''} · Escala final com trocas · ${MESES_UP[ipmMes.getMonth()]}/${ipmMes.getFullYear()}`; if (docTab === 'especial') { const e = eeAtual(); return `${state.instituicao || ''} · Escala Especial · ${e ? e.nome : ''}${eeFolhaEq ? ' · Equipe ' + eeFolhaEq : ''}`; } if (docTab === 'ipm') return `${state.instituicao || ''} · Escala IPM · ${MESES_UP[ipmMes.getMonth()]}/${ipmMes.getFullYear()}`; if (docTab === 'ci') { const c = getCI(docCI); return `${state.instituicao || ''} · Comunicação Interna nº ${c ? c.numero : ''}`; } if (docTab === 'superv') { const s = getSup(docSup); return `${state.instituicao || ''} · Supervisão de Dia · ${s ? br(parseISO(s.data)) + ' · ' + SUP_TURNO[s.turno] : ''}`; } return docTab === 'edital' ? `${state.instituicao || ''} · Escala de Serviço · ${MESES_EXT[docMes.getMonth()]}/${docMes.getFullYear()}` : `${state.instituicao || ''} · Boletim Interno · ${br(docDia)}`; }
 function pageCss() { const t = rodapeDoc().replace(/["\\]/g, ''); return `@page{size:A4 ${docPaisagem() ? 'landscape' : 'portrait'};margin:${docPaisagem() ? '9mm 8mm 13mm 8mm' : '14mm 12mm 16mm 12mm'};@bottom-left{content:"${t}";font:8px Arial,sans-serif;color:#6b7280}@bottom-right{content:"Página " counter(page) " de " counter(pages);font:8px Arial,sans-serif;color:#6b7280}}`; }
 function viewDocs() {
   garantirCssDoc();
@@ -5416,8 +5416,8 @@ function eeUnidades(ee) {
   const L = Object.values(un); L.forEach(u => u.membros.sort((a, b) => (a.funcao === 'supervisor' ? 0 : 1) - (b.funcao === 'supervisor' ? 0 : 1) || String(a.nomeGuerra).localeCompare(String(b.nomeGuerra))));
   return L.sort((a, b) => a.ord - b.ord || a.nome.localeCompare(b.nome));
 }
-function eeAutoGrupos(ee) {                       // inverte o ano anterior e divide CADA equipe ao meio (motor: dividirUnidade)
-  eeUnidades(ee).forEach(u => {
+function eeAutoGrupos(ee, so) {                       // inverte o ano anterior e divide CADA equipe ao meio (motor: dividirUnidade); so = só a equipe com esta chave
+  eeUnidades(ee).filter(u => !so || u.chave === so).forEach(u => {
     const membros = u.membros.map(g => { const d = ee.g[g.id] || {}; return { id: g.id, nome: g.nomeCompleto, matricula: g.matricula, h: d.h === 'N' || d.h === 'A' ? d.h : '', fixo: !!d.fixo, grupo: d.grupo }; });
     const r = EE_M.dividirUnidade(membros, ee.ano);
     u.membros.forEach(g => { ee.g[g.id] = ee.g[g.id] || { h: '', grupo: '', comp: [] }; ee.g[g.id].grupo = r.grupos[g.id]; });
@@ -5436,8 +5436,8 @@ function eeRodizioAlertas(ee) {
   });
   return out;
 }
-function eeAutoComp(ee) {
-  state.guardas.filter(g => eeEntra(ee, g)).forEach(g => {
+function eeAutoComp(ee, so) {
+  state.guardas.filter(g => eeEntra(ee, g) && (!so || eeUnidChave(g) === so)).forEach(g => {
     const d = ee.g[g.id] = ee.g[g.id] || { h: '', grupo: '', comp: [] }; if (d.fixo) return;
     const c = eeCands(ee, g, d.grupo)[0]; d.comp = c ? c.comp.slice() : [];
   });
@@ -5566,13 +5566,13 @@ function eeLista(pode) {
 }
 const eeAbrir = id => { eeSel = id; eeTab = 'dia'; eeUn = ''; eeDiaSel = ''; _eeBase = null; render(); };
 function eeDetalhe(ee, pode) {
-  const a = eeAnalise(ee), r = eeResumo(ee), nPend = a.st.pendencias, abas = [['dia', 'Dia'], ['resumo', 'Resumo'], ['folgas', 'Folgas'], ['grade', 'Grade'], ['deficits', 'Déficits' + (nPend ? ` (${nPend})` : '')], ['rua', 'Plantões de rua'], ['comp', 'Composição'], ['registro', 'Registro']];
+  const a = eeAnalise(ee), r = eeResumo(ee), nPend = a.st.pendencias, abas = [['dia', 'Dia'], ['equipe', 'Equipes'], ['resumo', 'Resumo'], ['folgas', 'Folgas'], ['grade', 'Grade'], ['deficits', 'Déficits' + (nPend ? ` (${nPend})` : '')], ['rua', 'Plantões de rua'], ['comp', 'Composição'], ['registro', 'Registro']];
   const cor = a.st.estado.startsWith('aprovada') && !a.aprovDesatualizada ? 'bg-emerald-100 text-emerald-800' : a.st.pendencias || a.aprovDesatualizada ? 'bg-amber-100 text-amber-900' : 'bg-sky-100 text-sky-800';
   $('main').innerHTML = `<div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="flex items-center gap-2"><button onclick="eeSel='';render()" class="${BTN_G}" aria-label="Voltar">←</button><div><div class="font-semibold">${esc(ee.nome)}</div><div class="text-xs text-slate-500">${br(ee.inicio)} a ${br(ee.fim)}</div></div></div>
     <div class="flex gap-2 flex-wrap"><button onclick="eeImprimir()" class="${BTN_P}">Imprimir / PDF</button><button onclick="eeFormExportar()" class="${BTN_O}">Excel ▾</button>${pode ? `<button onclick="eeMais()" class="${BTN_O}">Mais ▾</button>` : ''}</div></div>
     <div class="text-xs font-semibold rounded-lg px-3 py-2 mb-2 ${cor}">${esc(eeRotuloStatus(ee))}${MODO_TESTE ? ' · MODO DE TESTE LOCAL' : ''}</div>
     <div class="flex rounded-lg border border-slate-300 overflow-x-auto text-sm mb-3" role="tablist">${abas.map(([k, t]) => `<button role="tab" aria-selected="${eeTab === k}" onclick="eeTab='${k}';render()" class="tt shrink-0 px-3 ${eeTab === k ? 'bg-primary text-white' : 'bg-white'}">${t}</button>`).join('')}</div>
-    ${{ dia: () => eeAbaDia(ee, pode), resumo: () => eeAbaResumo(ee, r, pode), folgas: () => eeAbaFolgas(ee, pode), grade: () => eeAbaGrade(ee, pode), deficits: () => eeAbaDeficits(ee, pode), rua: () => eeAbaRua(ee, r, pode), comp: () => eeAbaComp(ee, pode), registro: () => eeAbaRegistro(ee) }[eeTab]()}`;
+    ${{ dia: () => eeAbaDia(ee, pode), equipe: () => eeAbaEquipe(ee, pode), resumo: () => eeAbaResumo(ee, r, pode), folgas: () => eeAbaFolgas(ee, pode), grade: () => eeAbaGrade(ee, pode), deficits: () => eeAbaDeficits(ee, pode), rua: () => eeAbaRua(ee, r, pode), comp: () => eeAbaComp(ee, pode), registro: () => eeAbaRegistro(ee) }[eeTab]()}`;
 }
 function eeAbaResumo(ee, r, pode) {
   const chip = (t, v, cor) => `<div class="${CARD} p-3 text-center"><div class="text-xl font-bold ${cor || ''}">${v}</div><div class="text-[11px] text-slate-500 leading-tight">${t}</div></div>`;
@@ -5699,13 +5699,10 @@ function eeBlocoRoster(ee, lista, pode) {
 function eeAbaDia(ee, pode) {
   const a = eeAnalise(ee), dias = a.gr.dias;
   if (!eeDiaSel || !dias.some(d => d.k === eeDiaSel)) eeDiaSel = eeDiaPadrao(ee);
-  const k = eeDiaSel, i = dias.findIndex(d => d.k === k), dia = dias[i], S = eeServicoDoDia(ee, k), ind = eeIndicDe(a);
-  if (!_eeBase || _eeBase.id !== ee.id) _eeBase = { id: ee.id, v: ind };
-  const b = _eeBase.v, st = d => d.linhas.some(l => l.faltam > 0) ? 'deficit' : d.linhas.some(l => l.status === 'pendencia') ? 'pendencia' : 'ok';
+  const k = eeDiaSel, i = dias.findIndex(d => d.k === k), dia = dias[i], S = eeServicoDoDia(ee, k);
+  const st = d => d.linhas.some(l => l.faltam > 0) ? 'deficit' : d.linhas.some(l => l.status === 'pendencia') ? 'pendencia' : 'ok';
   const corDia = { deficit: 'border-red-400 bg-red-50 text-red-800', pendencia: 'border-amber-400 bg-amber-50 text-amber-900', ok: 'border-emerald-300 bg-white text-slate-700' };
   const tira = dias.map(d => { const s = st(d), sel = d.k === k, dt = parseISO(d.k); return `<button ${sel ? 'id="ee-dia-sel"' : ''} onclick="eeDiaSel='${d.k}';render()" aria-pressed="${sel}" class="shrink-0 w-14 rounded-lg border-2 px-1 py-1 text-center leading-tight ${corDia[s]} ${sel ? 'ring-2 ring-primary font-bold' : ''}"><div class="text-[10px] uppercase">${EE_DS[dt.getDay()]}</div><div class="text-sm">${p2(dt.getDate())}/${p2(dt.getMonth() + 1)}</div></button>`; }).join('');
-  const dl = (v, v0) => v === v0 ? '' : `<span class="text-[11px] ${v < v0 ? 'text-emerald-700' : 'text-red-700'}">${v < v0 ? '▼' : '▲'}${Math.abs(v - v0)}</span>`;
-  const chip = (t, v, v0, ruim) => `<div class="${CARD} p-2 text-center"><div class="text-lg font-bold ${v ? ruim : 'text-emerald-700'}">${v} ${dl(v, v0)}</div><div class="text-[10px] text-slate-500 leading-tight">${t}</div></div>`;
   const propDia = (a.gr.atribuicoes || []).filter(x => x.k === k && x.st === 'proposta');
   const linhasDia = dia.linhas.slice().sort((x, y) => ({ deficit: 0, pendencia: 1, ok: 2 }[x.status] - { deficit: 0, pendencia: 1, ok: 2 }[y.status]));
   const prob = linhasDia.filter(l => l.status !== 'ok'), oks = linhasDia.filter(l => l.status === 'ok');
@@ -5715,12 +5712,11 @@ function eeAbaDia(ee, pode) {
   const nomes = L => L.map(p => `${esc(eeNome(p.g))}${p.nota && p.nota !== 'folga do recesso' ? ' (' + esc(p.nota) + ')' : ''}`).join(', ');
   const fold = (tit, L) => L.length ? `<details class="${CARD} p-2 mb-2"><summary class="cursor-pointer text-sm font-medium">${tit} (${L.length})</summary><div class="text-xs text-slate-600 mt-1">${nomes(L)}</div></details>` : '';
   return `<div class="flex items-center gap-1 mb-2"><button onclick="eeDiaSel='${dias[Math.max(0, i - 1)].k}';render()" class="${BTN_G}" aria-label="Dia anterior" ${i === 0 ? 'disabled' : ''}>◀</button>
-      <div class="flex gap-1 overflow-x-auto flex-1 py-1" id="ee-dias-tira">${tira}</div><button onclick="eeDiaSel='${dias[Math.min(dias.length - 1, i + 1)].k}';render()" class="${BTN_G}" aria-label="Próximo dia" ${i === dias.length - 1 ? 'disabled' : ''}>▶</button></div>
+      <div class="flex gap-1 overflow-x-auto flex-1 py-1" id="ee-dias-tira" style="display:flex;overflow-x:auto;min-width:0">${tira}</div><button onclick="eeDiaSel='${dias[Math.min(dias.length - 1, i + 1)].k}';render()" class="${BTN_G}" aria-label="Próximo dia" ${i === dias.length - 1 ? 'disabled' : ''}>▶</button></div>
     <div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div><div class="font-semibold">${esc(dia.rotuloDia)}${ee.natal.dias.includes(k) || ee.anoNovo.dias.includes(k) ? ' <span class="text-[11px] font-normal text-red-700">FERIADO</span>' : ''}</div><div class="text-xs text-slate-500">${eePerDe(ee, k) === 'N' ? 'período do Natal' : 'período do Ano Novo'} · serviço previsto para este dia</div></div>
       <div class="text-[11px] text-slate-500">${dia.linhas.filter(l => l.faltam > 0).length} déficit(s) neste dia</div></div>
-    <div class="sticky top-0 z-10 bg-slate-50/95 backdrop-blur py-1 -mx-1 px-1 mb-2"><div class="grid grid-cols-4 gap-2">${chip('déficits (escala toda)', ind.def, b.def, 'text-red-700')}${chip('guardas faltando', ind.faltam, b.faltam, 'text-red-700')}${chip('conflitos', ind.conf, b.conf, 'text-red-700')}${chip('propostas a autorizar', ind.prop, b.prop, 'text-amber-700')}</div>
-      <div class="text-[10px] text-slate-500 mt-0.5">▼▲ = mudança desde que você abriu esta escala. <button onclick="_eeBase=null;render()" class="underline">zerar comparação</button></div></div>
-    ${pode ? `<div class="${CARD} p-2 mb-2"><label class="block text-xs font-medium mb-1" for="ee-mot-padrao">Motivo das alterações desta tela (opcional)</label><input id="ee-mot-padrao" value="${esc(window._eeMotivoPadrao || '')}" oninput="window._eeMotivoPadrao=this.value.trim()" placeholder="Ex.: ajuste de cobertura do recesso" class="${INPUT}"><div class="text-[11px] text-slate-500 mt-1">Preenchido: o que você mudar aqui vale na hora, sem perguntar o motivo a cada vez, e o motivo vai para o Registro. Vazio: o sistema pergunta.</div></div>` : ''}
+    ${eeBarraHTML(ee)}
+    ${eeMotivoPadraoHTML(pode)}
     ${propDia.length ? `<div class="${CARD} p-2 mb-2 border-amber-300 bg-amber-50"><div class="text-sm font-semibold mb-1">Propostas deste dia (${propDia.length})</div>${propDia.map(x => { const g = getGuarda(x.gid); return `<div class="flex items-center justify-between gap-2 py-1 border-t border-amber-200 text-sm"><div class="min-w-0"><b>${esc(g ? eeNome(g) : x.gid)}</b> <span class="text-xs text-amber-900">${esc(EE_M.PAPEL_ROT[x.papel] || x.papel)}${x.t === 'D' ? ' · diurno' : x.t === 'N' ? ' · noturno' : ''}</span></div>${pode ? `<div class="flex gap-1 shrink-0"><button onclick="eeAutorizarProposta('${esc(x.papel)}','${esc(x.ref)}','${x.gid}','${k}')" class="${BTN_P} !h-8 text-xs">Autorizar</button><button onclick="eeRecusarProposta('${esc(x.papel)}','${esc(x.ref)}','${x.gid}','${k}','${esc(x.t)}')" class="${BTN_G} !h-8 text-xs">Recusar</button></div>` : ''}</div>`; }).join('')}</div>` : ''}
     ${prob.length ? `<div class="text-sm font-semibold mb-1">Precisa de atenção</div><div class="grid gap-2 md:grid-cols-2 mb-2">${prob.map(l => eeLinhaCard(ee, l, pode)).join('')}</div>` : `<div class="${CARD} p-2 mb-2 text-sm text-emerald-800 bg-emerald-50 border-emerald-200">Cobertura completa neste dia.</div>`}
     ${turnoSec('D', 'Diurno')}${turnoSec('N', 'Noturno')}
@@ -5728,6 +5724,127 @@ function eeAbaDia(ee, pode) {
     ${fold('Em recesso / escala compensada', S.recesso)}${fold('Afastados', S.afastados)}${fold('Em folga normal', S.folga)}
     ${oks.length ? `<details class="${CARD} p-2 mb-2"><summary class="cursor-pointer text-sm font-medium">Linhas de cobertura sem problema (${oks.length})</summary><div class="grid gap-2 md:grid-cols-2 mt-2">${oks.map(l => eeLinhaCard(ee, l, pode)).join('')}</div></details>` : ''}
     ${(setTimeout(() => { const el = $('ee-dia-sel'), c = $('ee-dias-tira'); if (el && c) c.scrollLeft = el.offsetLeft - c.offsetLeft - c.clientWidth / 2 + el.clientWidth / 2; }, 0), '')}`;
+}
+/* ---------- EQUIPES: alterar, trocar e informar por equipe ---------- */
+let eeEqSel = '';
+// barra fixa com os indicadores da escala toda e a variação desde a abertura (usada nas abas Dia e Equipes)
+function eeBarraHTML(ee) {
+  const ind = eeIndicDe(eeAnalise(ee)); if (!_eeBase || _eeBase.id !== ee.id) _eeBase = { id: ee.id, v: ind }; const b = _eeBase.v;
+  const dl = (v, v0) => v === v0 ? '' : `<span class="text-[11px] ${v < v0 ? 'text-emerald-700' : 'text-red-700'}">${v < v0 ? '▼' : '▲'}${Math.abs(v - v0)}</span>`;
+  const chip = (t, v, v0, ruim) => `<div class="${CARD} p-2 text-center"><div class="text-lg font-bold ${v ? ruim : 'text-emerald-700'}">${v} ${dl(v, v0)}</div><div class="text-[10px] text-slate-500 leading-tight">${t}</div></div>`;
+  return `<div class="sticky top-0 z-10 bg-slate-50/95 backdrop-blur py-1 -mx-1 px-1 mb-2"><div class="grid grid-cols-4 gap-2">${chip('déficits (escala toda)', ind.def, b.def, 'text-red-700')}${chip('guardas faltando', ind.faltam, b.faltam, 'text-red-700')}${chip('conflitos', ind.conf, b.conf, 'text-red-700')}${chip('propostas a autorizar', ind.prop, b.prop, 'text-amber-700')}</div>
+    <div class="text-[10px] text-slate-500 mt-0.5">▼▲ = mudança desde que você abriu esta escala. <button onclick="_eeBase=null;render()" class="underline">zerar comparação</button></div></div>`;
+}
+const eeMotivoPadraoHTML = pode => !pode ? '' : `<div class="${CARD} p-2 mb-2"><label class="block text-xs font-medium mb-1" for="ee-mot-padrao">Motivo das alterações desta tela (opcional)</label><input id="ee-mot-padrao" value="${esc(window._eeMotivoPadrao || '')}" oninput="window._eeMotivoPadrao=this.value.trim()" placeholder="Ex.: ajuste de cobertura do recesso" class="${INPUT}"><div class="text-[11px] text-slate-500 mt-1">Preenchido: o que você mudar aqui vale na hora, sem perguntar o motivo a cada vez, e o motivo vai para o Registro. Vazio: o sistema pergunta.</div></div>`;
+const eeUnidadeDe = (ee, chave) => eeUnidades(ee).find(u => u.chave === chave);
+
+function eeAbaEquipe(ee, pode) {
+  const un = eeUnidades(ee), D = g => ee.g[g.id] || {};
+  if (!un.length) return `<div class="${CARD} p-4 text-sm text-slate-500">Nenhuma equipe no rodízio.</div>`;
+  if (!un.some(u => u.chave === eeEqSel)) eeEqSel = (un.find(u => u.membros.some(g => eeErros(ee, g).length)) || un[0]).chave;
+  const u = eeUnidadeDe(ee, eeEqSel), dias = eeDias(ee), op = eeOp(ee), ini = op.inicio[u.chave] || {}, ch = u.chave.replace(/'/g, "\\'");
+  const cont = (g, v) => u.membros.filter(m => D(m).grupo === v).length, n = cont(null, 'N'), an = cont(null, 'A'), sem = u.membros.filter(m => !D(m).grupo).length, desb = Math.abs(n - an) > 1;
+  const probl = x => x.membros.some(g => eeErros(ee, g).length) || x.membros.some(g => !D(g).grupo);
+  const botoes = un.map(x => `<button onclick="eeEqSel='${x.chave.replace(/'/g, "\\'")}';render()" aria-pressed="${x.chave === u.chave}" class="shrink-0 h-9 px-3 rounded-lg border text-sm ${x.chave === u.chave ? 'bg-primary text-white border-primary font-semibold' : 'bg-white border-slate-300'} ${probl(x) && x.chave !== u.chave ? 'border-amber-400 text-amber-800' : ''}">${esc(x.nome)}${probl(x) ? ' ⚠' : ''}</button>`).join('');
+  const sel = (ev, val) => `<select ${pode ? '' : 'disabled'} onchange="${ev}" class="h-9 border border-slate-300 rounded-lg px-1 text-sm bg-white"><option value="" ${val ? '' : 'selected'}>sem grupo</option><option value="N" ${val === 'N' ? 'selected' : ''}>Natal</option><option value="A" ${val === 'A' ? 'selected' : ''}>Ano Novo</option></select>`;
+  const linhas = u.membros.map(g => { const d = D(g), b = eeBloco(ee, g), v = eeValidaDet(ee, g), rep = (d.h === 'N' || d.h === 'A') && d.grupo === d.h;
+    return `<div class="py-2 border-t border-slate-100"><div class="flex items-center gap-2 flex-wrap"><div class="flex-1 min-w-[140px]"><b class="text-sm">${esc(eeNome(g))}</b>${g.funcao === 'supervisor' ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">supervisor</span>' : ''}${d.fixo ? ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600" title="fixado à mão: o automático não mexe">fixado</span>' : ''}<div class="text-[11px] text-slate-500">${esc(g.matricula || 'sem matrícula')} · ${ee.anoAnt}: ${EE_ROT[d.h] || '—'}${rep ? ' <span class="text-amber-700">(repete)</span>' : ''}</div></div>
+      <label class="text-[11px] text-slate-500">${ee.ano}<br>${sel(`eeSetGrupo('${g.id}',this.value)`, d.grupo || '')}</label>
+      ${pode ? `<button onclick="eeFormGuarda('${g.id}')" class="${BTN_G} !h-9 text-xs">Plantões</button><button onclick="eeFormTroca('${g.id}')" class="${BTN_O} !h-9 text-xs">Trocar</button>` : ''}</div>
+      <div class="text-[11px] mt-1 ${v.some(i => i.nivel === 'erro') ? 'text-red-700' : v.length ? 'text-amber-700' : 'text-slate-600'}">${(d.comp || []).length ? 'compensa ' + d.comp.map(k => `${eeDia(k)} ${eeBase(g, k)}`).join(' · ') : 'sem escalas compensadas'}${b && b.be ? ` · folga ${brCurto2(b.bs)} a ${brCurto2(b.be)} (${b.len} dias) · volta ${brCurto2(b.ret)}` : ''}${v.length ? ' · ' + esc(v.map(i => i.msg).join('; ')) : ''}</div></div>`; }).join('');
+  const fer = new Set([...ee.natal.dias, ...ee.anoNovo.dias]);
+  const grade = `<div class="overflow-x-auto" style="overflow-x:auto"><table class="text-[10px] border-collapse"><thead><tr><th class="text-left pr-2 sticky left-0 bg-white">Guarda</th>${dias.map(k => { const d = parseISO(k); return `<th class="px-0.5 text-center font-medium ${fer.has(k) ? 'text-red-700' : 'text-slate-500'}">${EE_DS[d.getDay()].slice(0, 1).toUpperCase()}<br>${p2(d.getDate())}</th>`; }).join('')}</tr></thead><tbody>${u.membros.map(g => `<tr><td class="pr-2 whitespace-nowrap sticky left-0 bg-white">${esc(eeNome(g))}</td>${dias.map(k => { const c = eeCod(ee, g, k), [bg, fg, tx] = EE_CEL[c.c] || EE_CEL.F; return `<td style="background:${bg};color:${fg};min-width:22px;height:22px" class="text-center font-bold border border-white" title="${esc(eeDia(k) + ' · ' + (EE_COD_ROT[c.c] || 'Folga'))}">${tx}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="text-[10px] text-slate-500 mt-1">D/N = trabalho · C = escala compensada · · = folga dentro do recesso · P/S = cobertura · A = ausência. Dias em vermelho = feriados do recesso.</div>`;
+  return `${eeBarraHTML(ee)}${eeMotivoPadraoHTML(pode)}
+    <div class="flex gap-1 overflow-x-auto pb-1 mb-2" style="display:flex;overflow-x:auto">${botoes}</div>
+    <div class="${CARD} p-3 mb-2"><div class="flex items-start justify-between gap-2 flex-wrap"><div><div class="font-semibold">${esc(u.nome)}</div><div class="text-xs ${desb || sem ? 'text-amber-700' : 'text-slate-500'}">${u.membros.length} guarda(s) · Natal ${n} · Ano Novo ${an}${sem ? ` · ${sem} sem grupo` : ''}${desb ? ' · divisão desigual' : ''}</div></div>
+      <div class="flex gap-1 flex-wrap"><button onclick="eeImprimirEquipe('${ch}')" class="${BTN_P} !h-9 text-xs">Relatório (PDF)</button><button onclick="eeFormTexto('${ch}')" class="${BTN_O} !h-9 text-xs">Texto p/ WhatsApp</button><button onclick="eeExportarXlsx('equipe','${ch}')" class="${BTN_O} !h-9 text-xs">Excel</button>${pode ? `<button onclick="eeAutoEquipe('${ch}')" class="${BTN_O} !h-9 text-xs">Automático desta equipe</button>` : ''}</div></div></div>
+    <div class="${CARD} p-3 mb-2"><div class="font-semibold text-sm mb-1">Início do recesso desta equipe <span class="text-[11px] font-normal text-slate-500">(vazio = padrão: Natal ${brCurto2(ee.natal.inicioComp)}, Ano Novo ${brCurto2(ee.anoNovo.inicioComp)})</span></div>
+      <div class="grid grid-cols-3 gap-2"><label class="text-[11px] text-slate-500">Natal: início<input id="eq-ini-n" type="date" value="${(ini.N || {}).inicio || ''}" ${pode ? '' : 'disabled'} class="${INPUT}"></label><label class="text-[11px] text-slate-500">Ano Novo: início<input id="eq-ini-a" type="date" value="${(ini.A || {}).inicio || ''}" ${pode ? '' : 'disabled'} class="${INPUT}"></label><label class="text-[11px] text-slate-500">Ano Novo: término<input id="eq-ini-f" type="date" value="${(ini.A || {}).fim || ''}" ${pode ? '' : 'disabled'} class="${INPUT}"></label></div>
+      ${pode ? `<button onclick="eeSalvarInicioEquipe('${ch}')" class="${BTN_O} mt-2 !h-9 text-xs">Salvar datas da equipe</button>` : ''}</div>
+    <div class="${CARD} p-3 mb-2"><div class="font-semibold text-sm mb-1">Guardas da equipe</div><p class="text-[11px] text-slate-500 mb-1">Mude o período (Natal ou Ano Novo) na própria linha: o bloco é recalculado e a barra acima mostra o efeito. <b>Trocar</b> faz dois guardas da equipe trocarem de lugar.</p>${linhas}</div>
+    <div class="${CARD} p-3 mb-2"><div class="font-semibold text-sm mb-1">Como fica a equipe no recesso</div>${grade}</div>`;
+}
+
+/* ---------- troca de recesso entre dois guardas da mesma equipe ---------- */
+// cada um assume o período do outro; tenta as mesmas datas do colega e, se não servirem, o melhor bloco válido
+function eeTrocaCalc(ee, ga, gb) {
+  const da = ee.g[ga.id] || {}, db = ee.g[gb.id] || {};
+  const lado = (g, gr, pref) => {
+    const erros = comp => EE_M.validarBloco(eeTurnos(ee, g), comp, eeAlvo(ee, g, gr), eeCfg(ee)).filter(i => i.nivel === 'erro');
+    if (pref.length === 3 && !erros(pref).length) return { g, gr, comp: pref.slice(), via: 'mesmas datas do colega', erros: [] };
+    const c = eeCands(ee, g, gr)[0]; if (c) return { g, gr, comp: c.comp.slice(), via: 'melhor bloco disponível', erros: erros(c.comp) };
+    return { g, gr, comp: [], via: 'sem bloco possível', erros: [{ msg: 'não há bloco de 3 plantões possível para este período' }] };
+  };
+  return { a: lado(ga, db.grupo, db.comp || []), b: lado(gb, da.grupo, da.comp || []) };
+}
+function eeFormTroca(gid) {
+  const ee = eeAtual(), g = getGuarda(gid); if (!ee || !g || !exigir('especial.editar')) return; const d = ee.g[gid] || {}, u = eeUnidades(ee).find(x => x.membros.some(m => m.id === gid));
+  const outros = u ? u.membros.filter(m => m.id !== gid && (ee.g[m.id] || {}).grupo && ee.g[m.id].grupo !== d.grupo) : [];
+  if (!d.grupo || !outros.length) { toast('Não há ninguém desta equipe no outro período para trocar', 'warn'); return; }
+  openModal(`Trocar recesso — ${eeNome(g)}`, `<div class="space-y-3 text-sm"><p class="text-xs text-slate-500"><b>${esc(eeNome(g))}</b> está no <b>${EE_ROT[d.grupo]}</b>. Escolha com quem trocar: cada um assume o período do outro e a divisão da equipe continua igual.</p>
+    <div><label class="block text-xs text-slate-500 mb-1">Trocar com</label><select id="et-outro" onchange="eeTrocaPrev('${gid}')" class="${INPUT}">${outros.map(m => `<option value="${m.id}">${esc(eeNome(m))} — ${EE_ROT[(ee.g[m.id] || {}).grupo]}</option>`).join('')}</select></div>
+    <div id="et-prev"></div></div>`,
+    `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button id="et-ok" onclick="eeTrocaConfirmar('${gid}')" class="${BTN_P}">Trocar</button></div>`, true);
+  eeTrocaPrev(gid);
+}
+function eeTrocaPrev(gid) {
+  const ee = eeAtual(), ga = getGuarda(gid), gb = getGuarda($('et-outro').value); if (!ee || !ga || !gb) return; const r = eeTrocaCalc(ee, ga, gb);
+  const lin = x => { const b = x.comp.length === 3 ? EE_M.bloco(eeTurnos(ee, x.g), x.comp) : null; return `<div class="${CARD} p-2"><div class="font-medium">${esc(eeNome(x.g))}: ${EE_ROT[(ee.g[x.g.id] || {}).grupo]} → <b>${EE_ROT[x.gr]}</b></div>
+    <div class="text-xs text-slate-600">${x.comp.length ? 'compensa ' + x.comp.map(k => `${eeDia(k)} ${eeBase(x.g, k)}`).join(' · ') : 'sem datas'} <span class="text-slate-400">(${x.via})</span></div>
+    ${b && b.be ? `<div class="text-xs text-slate-600">folga ${brCurto2(b.bs)} a ${brCurto2(b.be)} (${b.len} dias) · volta ${brCurto2(b.ret)}</div>` : ''}
+    <div class="text-xs ${x.erros.length ? 'text-red-700' : 'text-emerald-700'}">${x.erros.length ? '⚠ ' + esc(x.erros.map(i => i.msg).join('; ')) : '✔ fecha os dias de folga do recesso'}</div></div>`; };
+  $('et-prev').innerHTML = `<div class="grid gap-2">${lin(r.a)}${lin(r.b)}</div>`; const ok = $('et-ok'); if (ok) { ok.disabled = !!(r.a.erros.length || r.b.erros.length); ok.classList.toggle('opacity-50', ok.disabled); }
+}
+function eeTrocaConfirmar(gid) {
+  const ee = eeAtual(), ga = getGuarda(gid), gb = getGuarda(($('et-outro') || {}).value); if (!ee || !ga || !gb || !exigir('especial.editar')) return; const r = eeTrocaCalc(ee, ga, gb);
+  if (r.a.erros.length || r.b.erros.length) { toast('A troca deixaria um dos dois fora dos 9 dias; ajuste antes', 'warn'); return; }
+  const da = ee.g[ga.id], db = ee.g[gb.id], desc = x => `${EE_ROT[(ee.g[x.id] || {}).grupo] || '—'} ${((ee.g[x.id] || {}).comp || []).map(brCurto2).join(', ')}`, antes = `${eeNome(ga)}: ${desc(ga)} · ${eeNome(gb)}: ${desc(gb)}`;
+  const depois = `${eeNome(ga)}: ${EE_ROT[r.a.gr]} ${r.a.comp.map(brCurto2).join(', ')} · ${eeNome(gb)}: ${EE_ROT[r.b.gr]} ${r.b.comp.map(brCurto2).join(', ')}`;
+  closeModal(); eeMotivo('Trocar o recesso', `<b>${esc(eeNome(ga))}</b> ⇄ <b>${esc(eeNome(gb))}</b>: ${esc(depois)}. Os dois ficam <b>fixados</b>.`, mot =>
+    eeAcao(ee, { acao: 'troca de recesso entre guardas', alvo: `${ga.nomeCompleto} ⇄ ${gb.nomeCompleto}`, antes, depois, motivo: mot }, () => { da.grupo = r.a.gr; da.comp = r.a.comp; da.fixo = true; db.grupo = r.b.gr; db.comp = r.b.comp; db.fixo = true; }, true));
+}
+function eeAutoEquipe(chave) {
+  const ee = eeAtual(); if (!ee || !exigir('especial.editar')) return; const u = eeUnidadeDe(ee, chave); if (!u) return;
+  confirmar('Automático desta equipe', `<p>Refaz o Natal / Ano Novo e os 3 plantões de <b>${esc(u.nome)}</b>. Quem foi <b>fixado</b> à mão não muda. As outras equipes não são tocadas.</p>`, () => eeAcao(ee, { acao: 'montagem automática da equipe', alvo: u.nome, antes: '', depois: 'grupos e compensações refeitos', motivo: '' }, () => { eeAutoGrupos(ee, chave); eeAutoComp(ee, chave); }, true));
+}
+function eeSalvarInicioEquipe(chave) {
+  const ee = eeAtual(); if (!ee || !exigir('especial.editar')) return; const n = $('eq-ini-n').value, an = $('eq-ini-a').value, f = $('eq-ini-f').value, ant = JSON.stringify(eeOp(ee).inicio[chave] || {});
+  const novo = n || an || f ? Object.assign(n ? { N: { inicio: n } } : {}, an || f ? { A: Object.assign(an ? { inicio: an } : {}, f ? { fim: f } : {}) } : {}) : null;
+  eeMotivo('Início do recesso da equipe', `Datas de <b>${esc(chave)}</b>: ${novo ? esc(JSON.stringify(novo)) : 'voltam ao padrão'}. Depois use <b>Automático desta equipe</b> para refazer os blocos.`, mot =>
+    eeAcao(ee, { acao: 'início do recesso da equipe alterado', alvo: chave, antes: ant, depois: JSON.stringify(novo || {}), motivo: mot }, () => { const o = eeOpW(ee); if (novo) o.inicio[chave] = novo; else delete o.inicio[chave]; }, true));
+}
+
+/* ---------- relatório por equipe: PDF, texto para WhatsApp e Excel ---------- */
+let eeFolhaEq = '';
+const eeImprimirEquipe = chave => { eeFolhaEq = chave; docTab = 'especial'; go('docsup'); };
+function eeTextoEquipe(ee, chave) {
+  const u = eeUnidadeDe(ee, chave); if (!u) return ''; const st = eeAnalise(ee), D = g => ee.g[g.id] || {};
+  const L = [`*ESCALA DO RECESSO ${ee.ano} — ${u.nome.toUpperCase()}*`, `Período: ${br(ee.inicio)} a ${br(ee.fim)}`];
+  if (st.st.pendencias) L.push('⚠ Escala ainda em RASCUNHO: pode mudar.');
+  [['N', 'NATAL', ee.natal.dias], ['A', 'ANO NOVO', ee.anoNovo.dias]].forEach(([gr, rot, fer]) => {
+    const ms = u.membros.filter(g => D(g).grupo === gr); if (!ms.length) return; L.push('', `*${rot}* (feriado: ${fer.map(brCurto2).join(' e ')})`);
+    ms.forEach(g => { const b = eeBloco(ee, g); L.push(`• ${eeNome(g)}${g.funcao === 'supervisor' ? ' (sup.)' : ''}: compensa ${(D(g).comp || []).map(brCurto2).join(', ') || '—'}${b && b.be ? `; folga de ${brCurto2(b.bs)} a ${brCurto2(b.be)} (${b.len} dias); volta ${brCurto2(b.ret)}` : ''}`); });
+  });
+  const sem = u.membros.filter(g => !D(g).grupo); if (sem.length) L.push('', `Sem definição: ${sem.map(eeNome).join(', ')}`);
+  L.push('', `Emitido em ${br(new Date())}`); return L.join('\n');
+}
+function eeFormTexto(chave) {
+  const ee = eeAtual(); if (!ee) return;
+  openModal(`Texto da equipe — ${chave}`, `<p class="text-xs text-slate-500 mb-2">Toque em <b>Copiar</b> e cole no WhatsApp.</p><textarea id="et-txt" readonly rows="14" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-mono">${esc(eeTextoEquipe(ee, chave))}</textarea>`,
+    `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Fechar</button><button onclick="eeCopiarTexto()" class="${BTN_P}">Copiar</button></div>`);
+}
+function eeCopiarTexto() {
+  const t = $('et-txt'); if (!t) return; const velho = () => { t.select(); try { document.execCommand('copy'); toast('Texto copiado'); } catch (e) { toast('Selecione o texto e copie', 'warn'); } };
+  try { navigator.clipboard.writeText(t.value).then(() => toast('Texto copiado'), velho); } catch (e) { velho(); }
+}
+function eeLinhasEquipe(ee, chave) {
+  const u = eeUnidadeDe(ee, chave); if (!u) return [['Equipe não encontrada']]; const dias = eeDias(ee);
+  return [['Matrícula', 'Nome', 'Função', `Recesso ${ee.anoAnt}`, `Recesso ${ee.ano}`, 'Plantões compensados', 'Folga de', 'Folga até', 'Dias seguidos', 'Retorno ao serviço', 'Pendências'].concat(dias.map(k => `${EE_DS[parseISO(k).getDay()]} ${brCurto2(k)}`))]
+    .concat(u.membros.map(g => { const d = ee.g[g.id] || {}, b = eeBloco(ee, g), v = eeValidaDet(ee, g);
+      return [g.matricula || '', g.nomeCompleto, g.funcao, EE_ROT[d.h] || '—', EE_ROT[d.grupo] || '—', (d.comp || []).map(k => brCurto2(k) + ' ' + eeBase(g, k)).join(', '), b && b.be ? br(b.bs) : '', b && b.be ? br(b.be) : '', b && b.len || '', b && b.ret ? br(b.ret) : '', v.map(i => i.msg).join('; ')]
+        .concat(dias.map(k => { const c = eeCod(ee, g, k); return (EE_CEL[c.c] || EE_CEL.F)[2] || 'F'; })); }))
+    .concat([[], ['Legenda: D/N trabalho diurno/noturno · C escala compensada · · folga dentro do recesso · P/S cobertura · A ausência · FC folga coletiva · E expediente']]);
 }
 /* ---------- análise da escala (grade operacional, inconsistências, rodízio, estado) ---------- */
 function eeCtx(ee) {
@@ -5778,7 +5895,7 @@ function eeAcao(ee, info, fn, recalc, semRender) {
   eeLog(ee, Object.assign({ impacto: eeImpactoTxt(a, b) }, info)); eeReset(); save(); if (!semRender) render();
 }
 function eeMotivo(titulo, texto, cb, obrig) {
-  if (eeTab === 'dia' && window._eeMotivoPadrao) { cb(window._eeMotivoPadrao); return; }   // aba Dia com motivo preenchido: aplica na hora (o motivo vai para o Registro)
+  if ((eeTab === 'dia' || eeTab === 'equipe') && window._eeMotivoPadrao) { cb(window._eeMotivoPadrao); return; }   // aba Dia com motivo preenchido: aplica na hora (o motivo vai para o Registro)
   window._eeMotivoCb = cb; window._eeMotivoObrig = obrig !== false;
   openModal(titulo, `<div class="space-y-3"><p class="text-sm text-slate-700">${texto}</p><div><label class="block text-sm font-medium mb-1">Motivo${obrig === false ? ' (opcional)' : ''}</label><textarea id="em-motivo" rows="3" class="w-full border border-slate-300 rounded-lg p-2 text-sm" placeholder="Ex.: pedido do guarda; decisão do comando; ajuste de cobertura…"></textarea></div></div>`,
     `<div class="flex gap-2 justify-end"><button onclick="closeModal();render()" class="${BTN_G}">Cancelar</button><button onclick="eeMotivoOk()" class="${BTN_P}">Confirmar</button></div>`);
@@ -6216,7 +6333,7 @@ function eeAbaGuardaXlsx(ee, g) {
 function eeFormExportar() {
   const ee = eeAtual(); if (!ee) return; const st = eeAnalise(ee).st;
   openModal('Exportar para Excel', `<div class="space-y-2"><p class="text-xs ${st.pendencias ? 'text-amber-800' : 'text-slate-500'}">${st.pendencias ? `A escala ainda é um <b>rascunho com ${st.pendencias} pendência(s)</b>: os arquivos trazem essa informação no cabeçalho.` : 'Os arquivos trazem a situação atual da escala no cabeçalho.'} Para PDF, use <b>Imprimir / PDF</b>.</p>
-    <div class="grid gap-2">${[['completo', 'Planilha completa (todas as abas)'], ['natal', 'Relação do recesso de Natal'], ['anonovo', 'Relação do recesso de Ano Novo'], ['grade', 'Grade operacional por data e turno'], ['deficits', 'Déficits e necessidades potenciais de extra'], ['historico', 'Histórico importado e validado'], ['registro', 'Registro de alterações e decisões']].map(([t, r]) => `<button onclick="closeModal();eeExportarXlsx('${t}')" class="${BTN_G} !justify-start text-left">${r}</button>`).join('')}</div>
+    <div class="grid gap-2">${[['completo', 'Planilha completa (todas as abas)'], ['natal', 'Relação do recesso de Natal'], ['anonovo', 'Relação do recesso de Ano Novo'], ['grade', 'Grade operacional por data e turno'], ['deficits', 'Déficits e necessidades potenciais de extra'], ['equipes', 'Uma aba por equipe (todas as equipes)'], ['historico', 'Histórico importado e validado'], ['registro', 'Registro de alterações e decisões']].map(([t, r]) => `<button onclick="closeModal();eeExportarXlsx('${t}')" class="${BTN_G} !justify-start text-left">${r}</button>`).join('')}</div>
     <div class="font-medium text-sm pt-2">Escala individual por guarda</div><div class="flex gap-2"><select id="ex-g" class="${INPUT}">${eeGuardasRodizio(ee).map(g => `<option value="${g.id}">${esc(g.nomeCompleto)} (${esc(g.matricula || 's/ mat.')})</option>`).join('')}</select><button onclick="eeExportarXlsx('guarda',$('ex-g').value);closeModal()" class="${BTN_P}">Baixar</button></div></div>`);
 }
 async function eeExportarXlsx(tipo, gid) {
@@ -6224,8 +6341,9 @@ async function eeExportarXlsx(tipo, gid) {
   const com = rows => cab.concat(rows), tem = t => tipo === 'completo' || tipo === t;
   if (tem('natal')) abas['Natal'] = com(eeLinhasRecesso(ee, 'N')); if (tem('anonovo')) abas['Ano Novo'] = com(eeLinhasRecesso(ee, 'A')); if (tem('grade')) abas['Grade operacional'] = com(eeLinhasGrade(ee));
   if (tem('deficits')) abas['Déficits e extras'] = com(eeLinhasDeficits(ee)); if (tem('historico')) abas['Histórico'] = com(eeLinhasHist(ee));
+  if (tipo === 'equipe') abas['Equipe ' + gid] = com(eeLinhasEquipe(ee, gid)); if (tipo === 'equipes') eeUnidades(ee).forEach(u => { abas[u.nome] = com(eeLinhasEquipe(ee, u.chave)); });
   if (tem('registro')) abas['Registro'] = com([['Quando', 'Quem', 'Ação', 'Alvo', 'Antes', 'Depois', 'Motivo', 'Impacto na cobertura']].concat(op.log.map(e => [eeQuando(e.em), e.por, e.acao, e.alvo, e.antes, e.depois, e.motivo, e.impacto])).concat([[], ['Decisões administrativas']], Object.keys(op.decisoes).map(id => [eeDecRotulo(ee, id), op.decisoes[id].tipoRot, op.decisoes[id].texto, op.decisoes[id].por, eeQuando(op.decisoes[id].em)])));
-  let nome = `Escala_Especial_${ee.nome.replace(/[^\w]+/g, '_')}_${tipo}`;
+  let nome = `Escala_Especial_${ee.nome.replace(/[^\w]+/g, '_')}_${tipo}${tipo === 'equipe' ? '_' + String(gid).replace(/[^\w]+/g, '_') : ''}`;
   if (tipo === 'guarda') { const g = getGuarda(gid), r = eeAbaGuardaXlsx(ee, g); abas['Guarda'] = com(r); nome = `Escala_${(g.matricula || g.id)}_${g.nomeCompleto.split(' ')[0]}`; }
   if (typeof XLSX === 'undefined' || !XLSX.utils) { const rows = Object.values(abas)[0]; await eeBaixar(nome + '.csv', '﻿' + rows.map(r => r.map(c => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(';')).join('\r\n'), 'text/csv'); toast('Sem a biblioteca de planilhas (sem internet): exportei a primeira aba em CSV', 'warn'); return; }
   const wb = XLSX.utils.book_new(); Object.entries(abas).forEach(([n, rows]) => { const ws = XLSX.utils.aoa_to_sheet(rows); const larg = []; rows.forEach(r => r.forEach((c, i) => { larg[i] = Math.min(60, Math.max(larg[i] || 8, String(c == null ? '' : c).length + 2)); })); ws['!cols'] = larg.map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, n.slice(0, 31)); });
@@ -6289,7 +6407,7 @@ function eeCod(ee, g, k) {                          // código de cada dia na gr
   const b = eeBloco(ee, g); return { c: b && k >= b.bs && (!b.be || k <= b.be) ? 'FB' : 'F' };
 }
 const eeCelHTML = r => { const [bg, fg, tx] = EE_CEL[r.c] || EE_CEL.F; return `<td style="background:${bg};color:${fg};font-weight:700">${tx}${r.t && (r.c === 'C' || r.c === 'P' || r.c === 'X') ? `<i>${r.t}</i>` : ''}</td>`; };
-function eeFolhaHTML(ee) {
+function eeFolhaHTML(ee, eq) {
   eeReset(); const dias = eeDias(ee), D = g => ee.g[g.id] || {}, fer = new Set([...ee.natal.dias, ...ee.anoNovo.dias]), R = eeRuaDados(ee), sh = k => brCurto(parseISO(k));
   const cab = k => { const d = parseISO(k), c = fer.has(k) ? 'ee-fer' : (d.getDay() === 0 || d.getDay() === 6 ? 'ee-fds' : ''); return `<th class="${c}">${EE_DS[d.getDay()]}<br>${p2(d.getDate())}/${p2(d.getMonth() + 1)}</th>`; };
   const larg = `<colgroup><col style="width:96px"><col style="width:27px"><col style="width:27px">${dias.map(() => '<col>').join('')}<col style="width:124px"></colgroup>`;
@@ -6301,24 +6419,24 @@ function eeFolhaHTML(ee) {
     return `<div class="ee-un"><h3>${esc(titulo)} <small>${sub}</small></h3><table class="ee-t">${larg}<thead><tr><th>Guarda</th><th>${ee.anoAnt}</th><th>${ee.ano}</th>${dias.map(cab).join('')}<th>Folga contínua</th></tr></thead><tbody>${lin}${tot}${cb}</tbody></table></div>`; };
   const un = eeUnidades(ee), exp = state.guardas.filter(g => g.equipeId && eeExped(g)).sort((a, b) => eeNome(a).localeCompare(eeNome(b)));
   const rua = e => (e && e.grupo === 'Operacional') ? e.id : '';
-  const tabelas = un.map(u => { const n = u.membros.filter(g => D(g).grupo === 'N').length, a = u.membros.filter(g => D(g).grupo === 'A').length, eq = u.grupo === 'Operacional' ? (state.equipes.find(e => e.nome === u.chave) || {}).id : '';
-    return tabela(u.grupo === 'Operacional' ? `Equipe ${u.nome} (com Almoxarifado)` : u.nome, `Natal ${n} · Ano Novo ${a}`, u.membros, false, rua(state.equipes.find(e => e.id === eq))); }).join('') + (exp.length ? tabela('Expediente', `folga coletiva de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}`, exp, true) : '');
+  const tabelas = (eq ? un.filter(u => u.chave === eq) : un).map(u => { const n = u.membros.filter(g => D(g).grupo === 'N').length, a = u.membros.filter(g => D(g).grupo === 'A').length, eq = u.grupo === 'Operacional' ? (state.equipes.find(e => e.nome === u.chave) || {}).id : '';
+    return tabela(u.grupo === 'Operacional' ? `Equipe ${u.nome} (com Almoxarifado)` : u.nome, `Natal ${n} · Ano Novo ${a}`, u.membros, false, rua(state.equipes.find(e => e.id === eq))); }).join('') + (exp.length && !eq ? tabela('Expediente', `folga coletiva de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}`, exp, true) : '');
   const leg = [['D', 'Trabalho diurno'], ['N', 'Trabalho noturno'], ['C', 'Escala compensada (folga do recesso) — a letra pequena é o turno'], ['·', 'Folga normal do ciclo dentro da folga contínua'], ['P', 'PPC com jornada trocada cobrindo a equipe de rua'], ['S', 'Supervisor cobrindo (extra)'], ['A', 'Ausência (férias, atestado etc.)'], ['FC', 'Folga coletiva do expediente'], ['E', 'Expediente']];
   const cor = { D: 'D', N: 'N', C: 'C', '·': 'FB', P: 'P', S: 'X', A: 'A', FC: 'FC', E: 'E' };
-  const quadro = `<div class="ee-sec"><h3>Plantões das equipes de rua — mínimo de ${eeMinArea(ee, 'D')} (diurno) / ${eeMinArea(ee, 'N')} (noturno) agentes + supervisor</h3><table class="ee-q"><thead><tr><th>Data</th><th>Turno</th><th>Equipe</th><th>Titulares</th><th>Em folga</th><th>PPC cobrindo</th><th>Supervisor</th><th>Agentes</th></tr></thead><tbody>${R.map(x => { const sc = x.sc[0], sup = !x.supTit ? '' : x.supOk ? esc(eeNome(x.sup)) : (sc && sc.g ? `${esc(eeNome(getGuarda(sc.g)))} (extra)` : '<span class="ee-vm">SEM SUPERVISOR</span>');
+  const Rq = eq ? R.filter(x => x.e.nome === eq) : R, quadro = `<div class="ee-sec"><h3>Plantões das equipes de rua — mínimo de ${eeMinArea(ee, 'D')} (diurno) / ${eeMinArea(ee, 'N')} (noturno) agentes + supervisor</h3><table class="ee-q"><thead><tr><th>Data</th><th>Turno</th><th>Equipe</th><th>Titulares</th><th>Em folga</th><th>PPC cobrindo</th><th>Supervisor</th><th>Agentes</th></tr></thead><tbody>${Rq.map(x => { const sc = x.sc[0], sup = !x.supTit ? '' : x.supOk ? esc(eeNome(x.sup)) : (sc && sc.g ? `${esc(eeNome(getGuarda(sc.g)))} (extra)` : '<span class="ee-vm">SEM SUPERVISOR</span>');
     return `<tr class="${x.pend ? 'ee-pd' : ''}"><td>${eeDia(x.k)}</td><td>${x.t === 'D' ? 'Diurno' : 'Noturno'}</td><td>${esc(x.e.nome)}</td><td>${x.pres.length}</td><td>${esc(x.folga.map(eeNome).join(', ')) || '—'}</td><td>${esc(x.ppc.map(c => eeNome(getGuarda(c.g))).join(', ')) || '—'}${x.prop.length ? ` <i>(proposta não autorizada: ${esc(x.prop.map(c => eeNome(getGuarda(c.g))).join(', '))})</i>` : ''}</td><td>${sup || '—'}</td><td>${x.total}/${x.min}${x.ex.length ? ` <span class="ee-vm">(${x.ex.length} extra a preencher)</span>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
   const an = eeAnalise(ee), op = eeOp(ee), rotL = { ok: '', deficit: 'ee-pd', pendencia: 'ee-pd' };
   const gradeQ = `<div class="ee-sec"><h3>Cobertura operacional por data e turno (área, PPC, ROMU, GTAM, supervisão e Central)</h3><table class="ee-q"><thead><tr><th>Data</th><th>Serviço</th><th>Prev.</th><th>Serv.</th><th>Rec.</th><th>Folga</th><th>Rem.</th><th>Disp./mín.</th><th>Déficit</th><th>VTRs</th><th>Servidores</th></tr></thead><tbody>${an.gr.dias.flatMap(d => d.linhas.map(l => `<tr class="${rotL[l.status] || ''}"><td>${eeDia(l.k)}</td><td>${esc(l.titulo)}</td><td>${l.previstos ?? ''}</td><td>${l.servico ?? ''}</td><td>${l.recesso ?? ''}</td><td>${l.folga ?? ''}</td><td>${l.remanejados ?? ''}</td><td>${l.minimo !== undefined ? l.disponiveis + '/' + l.minimo : (l.disponiveis ?? '')}</td><td class="${l.faltam ? 'ee-vm' : ''}">${l.faltam || ''}</td><td>${l.vtrs ?? ''}</td><td style="font-size:7px">${esc((l.pessoas || []).map(p => p.nome + (p.sit !== 'servico' ? ' (' + (eeSitRot[p.sit] || [p.sit])[0] + ')' : '')).join(', '))}</td></tr>`)).join('')}</tbody></table></div>`;
   const defQ = `<div class="ee-sec"><h3>Déficits e necessidades potenciais de extra (nenhuma hora extra foi lançada)</h3><table class="ee-q"><thead><tr><th>Data</th><th>Serviço</th><th>Mínimo</th><th>Disponível</th><th>Faltam</th><th>Remanejamentos possíveis</th><th>Restante / extra potencial</th><th>Decisão</th></tr></thead><tbody>${an.gr.deficits.map(d => `<tr class="${d.decisao ? '' : 'ee-pd'}"><td>${eeDia(d.k)}</td><td>${esc(d.titulo)}</td><td>${d.minimo}</td><td>${d.disponivel}</td><td class="ee-vm">${d.faltam}</td><td>${esc(d.remanejamentos.map(r => r.nome + ' (' + r.origem + ')').join(', ')) || '—'}</td><td>${d.restante} / ${d.extraPotencial}</td><td>${d.decisao ? esc(d.decisao.tipoRot + ': ' + d.decisao.texto) : '<span class="ee-vm">sem decisão</span>'}</td></tr>`).join('') || '<tr><td colspan="8">Nenhum déficit de cobertura.</td></tr>'}</tbody></table></div>`;
   const stCor = an.st.pendencias || an.aprovDesatualizada ? '#b3261e' : '#14532d', statusQ = `<div class="ee-regra" style="border-color:${stCor};color:${stCor};font-weight:700">SITUAÇÃO: ${esc(eeRotuloStatus(ee))}${MODO_TESTE ? ' · MODO DE TESTE LOCAL (sem usuário autenticado)' : ''}${an.st.pendencias ? ` — ${an.st.pendencias} pendência(s): ${an.incs.filter(i => !i.decisao).length} fora dos 9 dias, ${an.gr.conflitos.length} conflito(s), ${an.gr.deficits.filter(d => !d.decisao).length} déficit(s) sem decisão, ${an.propostas} proposta(s) sem autorização` : ''}</div>`;
   const rs = eeResumo(ee);
-  return `${cabecalhoOficial('ESCALA ESPECIAL — ' + ee.nome.toUpperCase(), `${br(ee.inicio)} a ${br(ee.fim)}`, `Dias de trabalho e de compensação durante a semana especial · emitida em ${br(new Date())}`)}
+  return `${cabecalhoOficial('ESCALA ESPECIAL — ' + ee.nome.toUpperCase() + (eq ? ' — EQUIPE ' + eq.toUpperCase() : ''), `${br(ee.inicio)} a ${br(ee.fim)}`, `Dias de trabalho e de compensação durante a semana especial · emitida em ${br(new Date())}`)}
     ${statusQ}
     <div class="ee-regra"><b>Regra:</b> cada guarda compensa <b>3 plantões seguidos</b> do seu ciclo; com os dias normais de folga, a folga contínua cobre o <b>Natal (${ee.natal.dias.map(sh).join(' e ')})</b> ou o <b>Ano Novo (${ee.anoNovo.dias.map(sh).join(' e ')})</b>, e quem está de folga não trabalha no feriado do seu grupo. Cada equipe se divide ao meio (metade no Natal, metade no Ano Novo), alternando em relação a ${ee.anoAnt}. O expediente folga de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}. A área tem no mínimo <b>${eeMinArea(ee, 'D')} agentes no diurno e ${eeMinArea(ee, 'N')} no noturno + supervisor</b>; a complementação pelo PPC (jornada ajustada), por adjunto ou pelo almoxarifado só vale depois de <b>autorizada</b> e, se faltar, com extra.${rs.pend ? ` <b style="color:#b3261e">Pendências: ${rs.pend} plantão(ões) de rua ainda precisam de cobertura.</b>` : ''}</div>
     <div class="ee-leg">${leg.map(([c, t]) => `<span><span class="c" style="background:${EE_CEL[cor[c]][0]};color:${EE_CEL[cor[c]][1]}">${c}</span>${t}</span>`).join('')}<span><span class="c" style="background:#b3261e;color:#fff">dia</span>feriado do recesso</span></div>
-    ${tabelas}${quadro}${gradeQ}${defQ}${assinaturaHTML('Pinhais, ' + dataExtenso(new Date()))}`;
+    ${tabelas}${eq && !Rq.length ? '' : quadro}${eq ? '' : gradeQ + defQ}${assinaturaHTML('Pinhais, ' + dataExtenso(new Date()))}`;
 }
-function eeImprimir() { docTab = 'especial'; go('docsup'); }
+function eeImprimir() { eeFolhaEq = ''; docTab = 'especial'; go('docsup'); }
 
 /* ============================================================
    MODO DE TESTE LOCAL
