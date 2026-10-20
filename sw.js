@@ -4,11 +4,12 @@
    Supabase e a CDNs (outra origem) passam direto, sem cache.
    Ao publicar uma versão nova, troque o nome do CACHE.
    ============================================================ */
-const CACHE = 'segesp-gm-2026.10.18';
+const CACHE = 'segesp-gm-2026.10.18-2';
 const ARQUIVOS = [
   './',
   './index.html',
   './supabase.js',
+  './escala_especial.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
