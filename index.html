@@ -5340,7 +5340,8 @@ const eeEntra = (ee, g) => !!g.equipeId && !eeExped(g) && !(ee.g[g.id] && ee.g[g
 const eeDias = ee => { const r = []; for (let k = ee.inicio; k <= ee.fim; k = eeAdd(k, 1)) r.push(k); return r; };
 const eeComp = (ee, g, k) => !!(ee.g[g.id] && (ee.g[g.id].comp || []).includes(k));
 const eeAus = (g, k) => !!ausenciaDoDia(g.id, k);
-const eeBase = (g, k) => turnoGuarda(g, parseISO(k));
+const eePPCEq = (ee, g) => (ee && ee.ppcIntegrado && (ee.ppcEquipe || {})[g.id]) || '';   // PPC integrado: equipe de área em que trabalha no recesso
+const eeBase = (g, k) => { const eq = eePPCEq(eeAtual(), g); return eq ? turno(eq, parseISO(k)) : turnoGuarda(g, parseISO(k)); };
 function eeNovaBase(ano) {
   return { nome: `Fim de Ano ${ano}/${ano + 1}`, ano, anoAnt: ano - 1, inicio: `${ano}-12-20`, fim: `${ano + 1}-01-08`,
     natal: { dias: [`${ano}-12-24`, `${ano}-12-25`], inicioComp: `${ano}-12-20` }, anoNovo: { dias: [`${ano}-12-31`, `${ano + 1}-01-01`], inicioComp: `${ano}-12-30` },
@@ -5410,7 +5411,7 @@ const EE_ORD_GRUPO = ['Operacional', 'Almoxarifado', 'ROMU', 'PPC', 'COMON', 'De
 function eeUnidades(ee) {
   const un = {};
   state.guardas.filter(g => eeEntra(ee, g)).forEach(g => {
-    const e = getEquipe(g.equipeId); let chave = e.nome, nome = e.nome, ord = EE_ORD_GRUPO.indexOf(e.grupo);
+    const e = getEquipe(eePPCEq(ee, g) || g.equipeId); let chave = e.nome, nome = e.nome, ord = EE_ORD_GRUPO.indexOf(e.grupo);
     if (e.grupo === 'Almoxarifado') { const t = state.equipes.find(x => x.grupo === 'Operacional' && e.nome.toUpperCase().endsWith(' ' + x.nome.toUpperCase())); if (t) { chave = t.nome; nome = t.nome; ord = 0; } }
     else if (e.grupo === 'GTAM') { chave = 'GTAM'; nome = 'GTAM'; }
     const u = (un[chave] = un[chave] || { chave, nome, grupo: ord === 0 ? 'Operacional' : e.grupo, ord: ord < 0 ? 99 : ord, membros: [] }); u.membros.push(g);
@@ -5462,7 +5463,8 @@ function eeAutoComp(ee) {
 const eeEquipesRua = () => state.equipes.filter(e => e.grupo === 'Operacional');
 function eeElenco(e) {
   const alm = state.equipes.filter(x => x.grupo === 'Almoxarifado' && x.nome.toUpperCase().endsWith(' ' + e.nome.toUpperCase()));
-  return { sup: supervisores(e.id), ag: [...agentes(e.id), ...alm.flatMap(a => membros(a.id))] };
+  const ee = eeAtual(), ppc = ee && ee.ppcIntegrado ? state.guardas.filter(g => eePPCEq(ee, g) === e.id) : [];
+  return { sup: supervisores(e.id), ag: [...agentes(e.id), ...alm.flatMap(a => membros(a.id)), ...ppc] };
 }
 function eeRuaBase(ee) {
   const out = [];
@@ -5480,7 +5482,26 @@ function eeRuaDados(ee) {
     const supCob = sc.filter(c => c.g).length > 0, supSem = !s.supOk && !supCob;
     return { ...s, ppc, ex, sc, total, supCob, supSem, fecha: total >= ee.minimo.agentes && !supSem, pend: total < ee.minimo.agentes || supSem || ex.length > 0 || sc.some(c => !c.g) }; });
 }
-const eePool = ee => state.guardas.filter(g => eeEntra(ee, g) && (getEquipe(g.equipeId) || {}).grupo === 'PPC');
+const eePool = ee => state.guardas.filter(g => eeEntra(ee, g) && (getEquipe(g.equipeId) || {}).grupo === 'PPC' && !eePPCEq(ee, g));
+const eePPCs = ee => state.guardas.filter(g => eeEntra(ee, g) && (getEquipe(g.equipeId) || {}).grupo === 'PPC');
+function eeDistribuirPPC(ee) {                      // reparte os PPC entre as equipes de área, sempre para a que tem menos agentes
+  const eqs = eeEquipesRua(), n = {}; ee.ppcEquipe = {};
+  eqs.forEach(e => { const alm = state.equipes.filter(x => x.grupo === 'Almoxarifado' && x.nome.toUpperCase().endsWith(' ' + e.nome.toUpperCase())); n[e.id] = [...agentes(e.id), ...alm.flatMap(a => membros(a.id))].filter(g => eeEntra(ee, g)).length; });
+  eePPCs(ee).sort((a, b) => eeNome(a).localeCompare(eeNome(b))).forEach(g => { const e = eqs.slice().sort((a, b) => n[a.id] - n[b.id])[0]; if (!e) return; ee.ppcEquipe[g.id] = e.id; n[e.id]++; });
+}
+function eeAplicarPPC(ee) {                         // após ligar/desligar ou mudar a distribuição: limpa o cache, tira coberturas de PPC integrado e refaz a escala
+  _eeMemo = {}; ee.cob = (ee.cob || []).filter(c => !(c.tipo === 'ppc' && c.g && eePPCEq(ee, getGuarda(c.g) || {})));
+  eeRecalc(ee, true); save(); render();
+}
+function eeSetPPC(gid, eq) { const ee = eeAtual(); if (!exigir('especial.editar')) return; ee.ppcEquipe = ee.ppcEquipe || {}; ee.ppcEquipe[gid] = eq; eeAplicarPPC(ee); }
+function eeRedistribuirPPC() { const ee = eeAtual(); if (!exigir('especial.editar')) return; eeDistribuirPPC(ee); eeAplicarPPC(ee); toast('PPC redistribuídos entre as equipes de área.'); }
+function eeCardPPC(ee) {
+  if (!ee.ppcIntegrado) return '';
+  const eqs = eeEquipesRua(), ppc = eePPCs(ee), cont = e => eeElenco(e).ag.filter(g => eeEntra(ee, g)).length;
+  return `<div class="${CARD} p-3 mb-3"><div class="flex justify-between items-center gap-2 mb-1"><b class="text-sm">PPC integrado às equipes de área</b><button onclick="eeRedistribuirPPC()" class="${BTN_G} !py-1 !px-2 text-xs">Redistribuir</button></div>
+    <p class="text-[11px] text-slate-500 mb-2">No recesso, cada PPC trabalha no ciclo da equipe escolhida (diurno e noturno) e entra na divisão Natal/Ano Novo dela. Agentes por equipe: ${eqs.map(e => `${esc(e.nome)} ${cont(e)}`).join(' · ')}</p>
+    ${ppc.map(g => `<div class="flex items-center justify-between gap-2 py-1 border-t border-slate-100 text-sm"><span>${esc(eeNome(g))} <span class="text-[11px] text-slate-500">${esc((getEquipe(g.equipeId) || {}).nome || '')}</span></span><select onchange="eeSetPPC('${g.id}', this.value)" class="border border-slate-300 rounded px-1 py-1 text-sm">${eqs.map(e => `<option value="${e.id}" ${eePPCEq(ee, g) === e.id ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>`).join('')}</div>`;
+}
 function eeRefazCob(ee, tentativas = 30) {       // mantém o que foi colocado à mão (m:true) e refaz o resto, escolhendo a melhor entre várias tentativas
   const manual = (ee.cob || []).filter(c => c.m && (!c.g || (() => { const g = getGuarda(c.g); return g && !eeComp(ee, g, c.k) && !eeAus(g, c.k); })()));
   const pool = eePool(ee), rua0 = eeRuaBase(ee), sups = eeEquipesRua().flatMap(e => supervisores(e.id).map(x => ({ x, e }))).filter(o => eeEntra(ee, o.x));
@@ -5579,7 +5600,7 @@ function eeDetalhe(ee, pode) {
   $('main').innerHTML = `<div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="flex items-center gap-2"><button onclick="eeSel='';render()" class="${BTN_G}" aria-label="Voltar">←</button><div><div class="font-semibold">${esc(ee.nome)}</div><div class="text-xs text-slate-500">${br(ee.inicio)} a ${br(ee.fim)}</div></div></div>
     <div class="flex gap-2 flex-wrap"><button onclick="eeImprimir()" class="${BTN_P}">Imprimir / PDF</button>${pode ? `<button onclick="eeMais()" class="${BTN_O}">Mais ▾</button>` : ''}</div></div>
     <div class="flex rounded-lg border border-slate-300 overflow-hidden text-sm mb-3">${abas.map(([k, t]) => `<button onclick="eeTab='${k}';render()" class="tt flex-1 ${eeTab === k ? 'bg-primary text-white' : 'bg-white'}">${t}</button>`).join('')}</div>
-    ${eeTab === 'resumo' ? eeAbaResumo(ee, r, pode) : eeTab === 'folgas' ? eeAbaFolgas(ee, pode) : eeTab === 'rua' ? eeAbaRua(ee, r, pode) : eeTab === 'sup' ? eeAbaSup(ee) : eeAbaMoto(ee)}`;
+    ${eeTab === 'resumo' ? eeCardPPC(ee) + eeAbaResumo(ee, r, pode) : eeTab === 'folgas' ? eeAbaFolgas(ee, pode) : eeTab === 'rua' ? eeAbaRua(ee, r, pode) : eeTab === 'sup' ? eeAbaSup(ee) : eeAbaMoto(ee)}`;
 }
 function eeAbaResumo(ee, r, pode) {
   const chip = (t, v, cor) => `<div class="${CARD} p-3 text-center"><div class="text-xl font-bold ${cor || ''}">${v}</div><div class="text-[11px] text-slate-500 leading-tight">${t}</div></div>`;
@@ -5740,14 +5761,17 @@ function eeFormParam() {
     <div class="font-semibold text-sm">Folga de Natal</div><div class="grid grid-cols-3 gap-2">${c('ep-n1', 'Feriado (de)', ee.natal.dias[0])}${c('ep-n2', 'Feriado (até)', ee.natal.dias[ee.natal.dias.length - 1])}${c('ep-nc', '1ª escala compensada a partir de', ee.natal.inicioComp)}</div>
     <div class="font-semibold text-sm">Folga de Ano Novo</div><div class="grid grid-cols-3 gap-2">${c('ep-a1', 'Feriado (de)', ee.anoNovo.dias[0])}${c('ep-a2', 'Feriado (até)', ee.anoNovo.dias[ee.anoNovo.dias.length - 1])}${c('ep-ac', '1ª escala compensada a partir de', ee.anoNovo.inicioComp)}</div>
     <div class="font-semibold text-sm">Expediente (folga coletiva)</div><div class="grid grid-cols-2 gap-2">${c('ep-e1', 'De', ee.expediente.inicio)}${c('ep-e2', 'Até', ee.expediente.fim)}</div>
-    <div><label class="block text-xs text-slate-500 mb-1">Mínimo de agentes por plantão de rua (+ 1 supervisor)</label><input id="ep-min" type="number" min="1" max="10" value="${ee.minimo.agentes}" class="${INPUT}"></div></div>`,
+    <div><label class="block text-xs text-slate-500 mb-1">Mínimo de agentes por plantão de rua (+ 1 supervisor)</label><input id="ep-min" type="number" min="1" max="10" value="${ee.minimo.agentes}" class="${INPUT}"></div>
+    <label class="flex items-start gap-2 text-sm"><input id="ep-ppc" type="checkbox" class="mt-1" ${ee.ppcIntegrado ? 'checked' : ''}> <span><b>PPC integrado às equipes de área</b><br><span class="text-[11px] text-slate-500">No recesso, o PPC é distribuído entre as equipes de área e faz o ciclo delas (diurno e noturno), em vez de cobrir por troca de jornada.</span></span></label></div>`,
     `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="eeSalvarParam()" class="${BTN_P}">Salvar</button></div>`, true);
 }
 function eeSalvarParam() {
   const ee = eeAtual(); if (!exigir('especial.editar')) return; const v = id => $(id).value, per = (a, b) => { const r = []; for (let k = a; k <= b; k = eeAdd(k, 1)) r.push(k); return r; };
   if (!v('ep-ini') || !v('ep-fim') || v('ep-fim') < v('ep-ini')) { toast('Confira o período', 'error'); return; }
   ee.nome = v('ep-nome').trim() || ee.nome; ee.inicio = v('ep-ini'); ee.fim = v('ep-fim'); ee.natal = { dias: per(v('ep-n1'), v('ep-n2')), inicioComp: v('ep-nc') }; ee.anoNovo = { dias: per(v('ep-a1'), v('ep-a2')), inicioComp: v('ep-ac') };
-  ee.expediente = { inicio: v('ep-e1'), fim: v('ep-e2') }; ee.minimo.agentes = Math.max(1, parseInt(v('ep-min'), 10) || 4); closeModal(); eeSalvar(ee, true); toast('Parâmetros salvos. Use "Montar automaticamente" para refazer os blocos.', 'warn');
+  ee.expediente = { inicio: v('ep-e1'), fim: v('ep-e2') }; ee.minimo.agentes = Math.max(1, parseInt(v('ep-min'), 10) || 4); closeModal();
+  const ppc = $('ep-ppc').checked; if (ppc !== !!ee.ppcIntegrado) { ee.ppcIntegrado = ppc; if (ppc && !Object.keys(ee.ppcEquipe || {}).length) eeDistribuirPPC(ee); eeAplicarPPC(ee); toast(ppc ? 'PPC integrado às equipes de área. Escala refeita.' : 'PPC voltou à escala própria. Escala refeita.'); return; }
+  eeSalvar(ee, true); toast('Parâmetros salvos. Use "Montar automaticamente" para refazer os blocos.', 'warn');
 }
 function eeFormGuarda(gid) {
   const ee = eeAtual(), g = getGuarda(gid), d = ee.g[gid]; if (!ee || !g) return;
@@ -5883,7 +5907,7 @@ function eeFolhaHTML(ee) {
   const larg = `<colgroup><col style="width:96px"><col style="width:27px"><col style="width:27px">${dias.map(() => '<col>').join('')}<col style="width:124px"></colgroup>`;
   const tabela = (titulo, sub, membros, exped, cobTeam) => {
     const lin = membros.map(g => { const d = D(g), b = eeBloco(ee, g), tx = exped ? `${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}` : b && b.be ? `${sh(b.bs)} a ${sh(b.be)} (${b.len}d) · volta ${sh(b.ret)}` : (d.comp || []).map(sh).join(', ');
-      return `<tr><td class="ee-nm">${esc(eeNome(g))}${g.funcao === 'supervisor' ? ' <small>(sup.)</small>' : ''}</td><td>${{ N: 'Nat', A: 'A.N.', G: 'Ag.' }[d.h] || ''}</td><td>${exped ? '—' : { N: 'Nat', A: 'A.N.' }[d.grupo] || ''}</td>${dias.map(k => eeCelHTML(eeCod(ee, g, k))).join('')}<td class="ee-tx">${tx}</td></tr>`; }).join('');
+      return `<tr><td class="ee-nm">${esc(eeNome(g))}${g.funcao === 'supervisor' ? ' <small>(sup.)</small>' : eePPCEq(ee, g) ? ' <small>(PPC)</small>' : ''}</td><td>${{ N: 'Nat', A: 'A.N.', G: 'Ag.' }[d.h] || ''}</td><td>${exped ? '—' : { N: 'Nat', A: 'A.N.' }[d.grupo] || ''}</td>${dias.map(k => eeCelHTML(eeCod(ee, g, k))).join('')}<td class="ee-tx">${tx}</td></tr>`; }).join('');
     const emServ = (lista, k) => lista.filter(g => ['D', 'N', 'E'].includes(eeCod(ee, g, k).c)).length || '';
     const agM = membros.filter(g => g.funcao !== 'supervisor'), supM = membros.filter(g => g.funcao === 'supervisor');
     const tot = `<tr class="ee-tot"><td class="ee-nm" colspan="3">Agentes em serviço</td>${dias.map(k => `<td>${emServ(agM, k)}</td>`).join('')}<td></td></tr>` + (supM.length ? `<tr class="ee-tot"><td class="ee-nm" colspan="3">Supervisor em serviço</td>${dias.map(k => `<td>${emServ(supM, k)}</td>`).join('')}<td></td></tr>` : '');
@@ -5892,7 +5916,7 @@ function eeFolhaHTML(ee) {
   const un = eeUnidades(ee), exp = state.guardas.filter(g => g.equipeId && eeExped(g)).sort((a, b) => eeNome(a).localeCompare(eeNome(b)));
   const rua = e => (e && e.grupo === 'Operacional') ? e.id : '';
   const tabelas = un.map(u => { const n = u.membros.filter(g => D(g).grupo === 'N').length, a = u.membros.filter(g => D(g).grupo === 'A').length, eq = u.grupo === 'Operacional' ? (state.equipes.find(e => e.nome === u.chave) || {}).id : '';
-    return tabela(u.grupo === 'Operacional' ? `Equipe ${u.nome} (com Almoxarifado)` : u.nome, `Natal ${n} · Ano Novo ${a}`, u.membros, false, rua(state.equipes.find(e => e.id === eq))); }).join('') + (exp.length ? tabela('Expediente', `folga coletiva de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}`, exp, true) : '');
+    return tabela(u.grupo === 'Operacional' ? `Equipe ${u.nome} (com Almoxarifado${ee.ppcIntegrado ? ' e PPC' : ''})` : u.nome, `Natal ${n} · Ano Novo ${a}`, u.membros, false, rua(state.equipes.find(e => e.id === eq))); }).join('') + (exp.length ? tabela('Expediente', `folga coletiva de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}`, exp, true) : '');
   const leg = [['D', 'Trabalho diurno'], ['N', 'Trabalho noturno'], ['C', 'Escala compensada (folga do recesso) — a letra pequena é o turno'], ['·', 'Folga normal do ciclo dentro da folga contínua'], ['J', 'Supervisor com a jornada do dia trocada (a letra pequena é o turno que faz)'], ['C!', 'Compensada em dia que não é plantão do guarda (a escala dele mudou) — refazer as compensadas'], ['P', 'PPC com jornada trocada para o noturno (o PPC de dia na própria escala é reforço e aparece como D)'], ['S', 'Supervisor cobrindo (extra)'], ['A', 'Ausência (férias, atestado etc.)'], ['FC', 'Folga coletiva do expediente'], ['E', 'Expediente']];
   const cor = { D: 'D', N: 'N', C: 'C', 'C!': 'CI', J: 'J', '·': 'FB', P: 'P', S: 'X', A: 'A', FC: 'FC', E: 'E' };
   const quadro = `<div class="ee-sec"><h3>Plantões das equipes de rua — mínimo de ${ee.minimo.agentes} agentes + supervisor</h3><table class="ee-q"><thead><tr><th>Data</th><th>Turno</th><th>Equipe</th><th>Titulares</th><th>Em folga</th><th>PPC (reforço D / jornada trocada N)</th><th>Supervisor</th><th>Agentes</th></tr></thead><tbody>${R.map(x => { const sc = x.sc[0], sup = !x.supTit ? '' : x.supOk ? esc(eeNome(x.sup)) : (sc && sc.g ? `${esc(eeNome(getGuarda(sc.g)))} (${sc.troca ? 'jornada trocada' : sc.coord ? 'coordenador' : sc.adj ? 'adjunto' : sc.coringa ? 'coringa' : 'extra'})` : '<span class="ee-vm">A DEFINIR</span>');
