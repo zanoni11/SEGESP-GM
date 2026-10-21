@@ -155,6 +155,17 @@
     .print-title { display: block !important; }
     .shift-D, .shift-N, .shift-F, .shift-EV, .he-cell, .he-tag, .ev-cell, .ev-tag, .he-linha td, .st-fer, .st-at, .st-af, .st-ds, .tr-cell, .tr-tag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
+
+  .brand-bar { background: #0e7490; color: #f8fafc; }
+  .brand-sub { color: rgba(248,250,252,.85); }
+  .sync-on-brand { color: #f8fafc !important; }
+  .sync-on-brand.sync-err { color: #fee2e2 !important; background: transparent; }
+  .hoje-alerta, .hoje-ok { border-radius: 12px; padding: 12px 16px; font-weight: 650; font-size: 15px; margin-bottom: 16px; }
+  .hoje-bad { background: #fef2f2; color: #991b1b; }
+  .hoje-warn { background: #fffbeb; color: #92400e; }
+  .hoje-ok { background: #ecfdf5; color: #065f46; }
+  .hoje-falta { border: 1px dashed #b91c1c; color: #991b1b; border-radius: 8px; padding: 8px 12px; font-weight: 650; }
+
 </style>
 </head>
 <body class="min-h-screen">
@@ -176,11 +187,11 @@
 </div>
 
 <aside class="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-56 bg-white border-r border-slate-200 z-30 no-print">
-  <div class="p-4 border-b border-slate-200">
-    <h1 class="text-xl font-bold text-primary">Escalas GM</h1>
-    <p id="side-inst" class="text-xs text-slate-500 truncate"></p>
-    <button data-sync onclick="syncClique()" class="sync-ind sync-wait mt-1 -ml-2" aria-live="polite"></button>
-    <button onclick="abrirBusca()" class="tt mt-2 w-full text-left text-xs text-slate-500 hover:text-primary flex items-center gap-1.5"><span>🔍</span> Buscar <span class="ml-auto text-[10px] opacity-60">Ctrl+K</span></button>
+  <div class="brand-bar p-4">
+    <h1 class="text-xl font-bold">SEGESP-GM</h1>
+    <p id="side-inst" class="text-xs brand-sub truncate"></p>
+    <button data-sync onclick="syncClique()" class="sync-ind sync-wait sync-on-brand mt-1 -ml-2" aria-live="polite"></button>
+    <button onclick="abrirBusca()" class="tt mt-2 w-full text-left text-sm brand-sub">Buscar <span class="ml-auto text-xs">Ctrl+K</span></button>
   </div>
   <nav id="side-nav" class="flex-1 p-2 space-y-1 overflow-y-auto" aria-label="Telas"></nav>
   <div id="side-user"></div>
@@ -189,7 +200,7 @@
 <div id="drawer-bg" class="drawer-bg no-print" onclick="fecharDrawer()"></div>
 <aside id="drawer" class="drawer no-print" aria-label="Menu" aria-hidden="true" inert>
   <div class="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
-    <div class="min-w-0 flex-1"><div class="text-lg font-bold text-primary">Escalas GM</div><p id="drawer-inst" class="text-xs text-slate-500 truncate"></p></div>
+    <div class="min-w-0 flex-1"><div class="text-lg font-bold text-primary">SEGESP-GM</div><p id="drawer-inst" class="text-xs text-slate-500 truncate"></p></div>
     <button onclick="fecharDrawer()" aria-label="Fechar menu" class="tt text-slate-500 text-2xl leading-none">&times;</button>
   </div>
   <nav id="drawer-nav" class="flex-1 p-2 space-y-1 overflow-y-auto" aria-label="Telas"></nav>
@@ -197,11 +208,11 @@
 </aside>
 
 <div class="md:ml-56">
-  <header class="md:hidden bg-white border-b border-slate-200 px-2 py-1.5 flex items-center gap-1 sticky z-30 no-print" style="top:0">
-    <button id="btn-menu" onclick="abrirDrawer()" aria-label="Abrir menu" aria-controls="drawer" aria-expanded="false" class="tt text-primary text-2xl leading-none">☰</button>
-    <div class="min-w-0 flex-1"><h1 class="text-base font-bold text-primary leading-tight">Escalas GM</h1><div id="head-title" class="text-xs text-slate-500 truncate"></div></div>
-    <button data-sync onclick="syncClique()" class="sync-ind sync-wait" aria-live="polite"></button>
-    <button onclick="abrirBusca()" aria-label="Buscar" class="tt text-primary text-xl">🔍</button>
+  <header class="md:hidden brand-bar px-2 py-2 flex items-center gap-1 sticky z-30 no-print" style="top:0">
+    <button id="btn-menu" onclick="abrirDrawer()" aria-label="Abrir menu" aria-controls="drawer" aria-expanded="false" class="tt text-2xl leading-none">☰</button>
+    <div class="min-w-0 flex-1"><h1 class="text-base font-bold leading-tight">SEGESP-GM</h1><div id="head-title" class="text-xs brand-sub truncate"></div></div>
+    <button data-sync onclick="syncClique()" class="sync-ind sync-wait sync-on-brand" aria-live="polite"></button>
+    <button onclick="abrirBusca()" aria-label="Buscar" class="tt text-xl">🔍</button>
   </header>
   <main id="main" class="p-3 md:p-6" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.5rem)"></main>
 </div>
@@ -1012,8 +1023,7 @@ function renderNav() {
     if (!itens.length) return '';
     return `<div class="space-y-1 pb-2">
       <div class="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">${g.titulo}</div>
-      ${itens.map(n => `<button onclick="go('${n.id}')" ${ativo === n.id ? 'aria-current="page"' : ''} class="tt w-full flex items-center gap-3 px-3 rounded-lg text-left text-sm ${ativo === n.id ? 'bg-primary text-white font-medium' : 'text-slate-700 hover:bg-slate-100'}">
-        <span aria-hidden="true">${n.icon}</span><span>${n.label}</span></button>`).join('')}</div>`;
+      ${itens.map(n => `<button onclick="go('${n.id}')" ${ativo === n.id ? 'aria-current="page"' : ''} class="tt w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm ${ativo === n.id ? 'bg-primary text-white font-medium' : 'text-slate-700 hover:bg-slate-100'}"><span aria-hidden="true">${n.icon}</span><span>${n.label}</span></button>`).join('')}</div>`;
   }).join('');
   $('side-nav').innerHTML = html;
   $('drawer-nav').innerHTML = html;
@@ -1076,6 +1086,41 @@ function badge(t) { return t ? `<span class="shift-${t} inline-flex items-center
    VIEW: HOJE (dashboard diário)
    ============================================================ */
 let diaSel = new Date();
+function alertaHoje(d) {
+  const e = efetivoDoDia(d);
+  const msgs = [];
+  if (e.diurno && e.diurno.semSupervisor) msgs.push('Diurno sem supervisor');
+  else if (e.diurno && e.diurno.status === 'abaixo') msgs.push('Diurno abaixo do mínimo');
+  if (e.noturno && (!e.noturno.supervisores || !e.noturno.supervisores.length)) msgs.push('Noturno sem supervisor');
+  if (e.noturno && e.noturno.status === 'abaixo') msgs.push('Noturno abaixo do mínimo');
+  if (e.romu && e.romu.some && e.romu.some(x => x.status === 'abaixo')) msgs.push('ROMU abaixo do mínimo');
+  if (e.gtam && e.gtam.status === 'abaixo') msgs.push('GTAM abaixo do mínimo');
+  if (!msgs.length) return '<div class="hoje-ok">Dia fechado. Nenhuma equipe abaixo do mínimo.</div>';
+  return `<div class="hoje-alerta hoje-bad">${esc(msgs.join(' · '))}</div>`;
+}
+let _hojeAbertos = new Set();
+function hojeToggle(id) {
+  if (_hojeAbertos.has(id)) _hojeAbertos.delete(id); else _hojeAbertos.add(id);
+  render();
+}
+function meuServicoHoje(d) {
+  const u = usuarioAtual();
+  if (!u) return '';
+  const g = state.guardas.find(x => (u.matricula && x.matricula && String(x.matricula) === String(u.matricula)) || (u.nome && (x.nomeCompleto === u.nome || x.nomeGuerra === u.nome)));
+  if (!g || !g.equipeId) return '';
+  const eq = getEquipe(g.equipeId);
+  if (!eq) return '';
+  const t = turno(eq.id, d);
+  if (!t || t === 'F') {
+    return `<article class="${CARD} overflow-hidden mb-4" ${eqBorda(eq.id)}><div class="px-4 py-4"><div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Meu serviço</div><div class="text-xl font-bold mt-1">${esc(g.nomeGuerra || g.nomeCompleto)}</div><div class="text-sm text-slate-500">Folga · ${eqTag(eq)}</div></div></article>`;
+  }
+  const dia = equipeNoDia(eq, t, d);
+  const ciclo = getCiclo(eq.cicloId);
+  const papel = g.funcao === 'agente' ? 'agente' : 'supervisor';
+  const h = horario(ciclo, t, papel);
+  const sup = (dia.sups && dia.sups[0]) ? (dia.sups[0].nomeGuerra || dia.sups[0].nomeCompleto) : (eq.chefia || 'não definido');
+  return `<article class="${CARD} overflow-hidden mb-4" ${eqBorda(eq.id)}><div class="px-4 py-4"><div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Meu serviço</div><div class="flex items-center gap-2 mt-1"><div class="text-xl font-bold">${esc(g.nomeGuerra || g.nomeCompleto)}</div>${badge(t)}</div><div class="text-base">${eqTag(eq)} · ${h ? h[0] + ' às ' + h[1] : (t === 'D' ? 'Diurno' : 'Noturno')}</div><div class="text-sm text-slate-500">Supervisor ${esc(sup)}</div></div></article>`;
+}
 function viewHoje() {
   const d = diaSel, hoje = iso(d) === iso(new Date());
   let html = `<div class="flex items-center justify-between mb-4">
@@ -1087,7 +1132,8 @@ function viewHoje() {
       <button onclick="mudarDia(1)" aria-label="Próximo dia" class="tt rounded-lg text-primary text-2xl">▶</button>
     </div>
     ${hoje ? '' : `<div class="flex justify-center mb-4"><button onclick="diaSel=new Date();render()" class="${BTN_O}">Voltar para hoje</button></div>`}
-    ${chipsEfetivo(d)}
+    ${alertaHoje(d)}
+    ${meuServicoHoje(d)}
     ${blocoRequalHoje(d)}
     `;
   [...new Set(state.equipes.map(e => e.grupo || ''))].forEach((gr, gi) => {
@@ -1099,30 +1145,44 @@ function viewHoje() {
     eqs.forEach(eq => {
       const ciclo = getCiclo(eq.cicloId), dia = equipeNoDia(eq, t, d), sups = dia.sups, ags = dia.ags, prob = problemasEquipe(eq.id, sups.length, ags.length);
       const hs = horario(ciclo, t, 'supervisor'), ha = horario(ciclo, t, 'agente');
-      secao += `<div class="${CARD} overflow-hidden" ${eqBorda(eq.id)}>
-        <div class="shift-${t} px-4 py-3 flex items-center justify-between">
-          <h3 class="font-bold">${label} · ${eqTag(eq)}</h3>${badge(t)}
-        </div>
-        <div class="p-4 space-y-3 text-sm">
-          ${prob.length ? `<div class="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-xs">⚠ Efetivo: ${esc(prob.join(', '))}</div>` : ''}
+      const chave = eq.id + '-' + t;
+      const aberto = _hojeAbertos.has(chave);
+      const supNome = sups.length ? (sups[0].nomeGuerra || sups[0].nomeCompleto) : '';
+      const agN = ags.length;
+      const min = eq && eq.efetivoMinimo !== undefined && eq.efetivoMinimo !== null && eq.efetivoMinimo !== '' ? Number(eq.efetivoMinimo) : 4;
+      const faltaAg = agN < min;
+      const faltaSup = eq.exigeSupervisor !== false && !sups.length;
+      const ruim = faltaAg || faltaSup;
+      const linha = `${agN}/${min} agentes · ${sups.length ? 'Sup: ' + esc(supNome) : 'sem supervisor'}`;
+      secao += `<div class="${CARD} overflow-hidden bg-white" ${eqBorda(eq.id)}>
+        <button type="button" onclick='hojeToggle(${JSON.stringify(chave)})' aria-expanded="${aberto ? 'true' : 'false'}" class="tt w-full text-left px-4 py-3 flex items-center gap-3 bg-white">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2"><h3 class="font-bold">${eqTag(eq)}</h3>${badge(t)}<span class="text-xs text-slate-500">${label}</span></div>
+            <div class="text-sm ${ruim ? 'text-red-700 font-semibold' : 'text-slate-500'}">${linha}</div>
+          </div>
+          <span class="text-sm text-slate-400">${aberto ? 'Fechar' : 'Abrir'}</span>
+        </button>
+        ${aberto ? `<div class="px-4 pb-4 pt-3 space-y-3 border-t border-slate-100">
+          ${prob.length ? `<div class="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm font-semibold">Efetivo: ${esc(prob.join(', '))}</div>` : ''}
           <div>
             <div class="text-xs text-slate-500 mb-1">${sups.length || !eq.chefia ? 'Supervisor' : 'Chefia imediata'}${hs && sups.length ? ` · ${hs[0]} às ${hs[1]}` : ''}</div>
-            ${sups.length ? sups.map(s => `<div class="font-medium">${esc(s.nomeCompleto)}${tagTroca(dia, s.id)}</div>`).join('') : eq.chefia ? `<div class="font-medium">${esc(eq.chefia)}</div>` : eq.exigeSupervisor === false ? '<div class="text-slate-400">Sem supervisor próprio</div>' : '<div class="text-red-600">Não definido</div>'}
+            ${sups.length ? sups.map(s => `<div class="text-base font-semibold">${esc(s.nomeGuerra || s.nomeCompleto)}${tagTroca(dia, s.id)}</div>`).join('') : eq.chefia ? `<div class="text-base font-semibold">${esc(eq.chefia)}</div>` : eq.exigeSupervisor === false ? '<div class="text-slate-400">Sem supervisor próprio</div>' : '<div class="hoje-falta">Sem supervisor</div>'}
           </div>
           <div>
             <div class="text-xs text-slate-500 mb-1">Agentes (${ags.length})${ha ? ` · ${ha[0]} às ${ha[1]}${pausaTxt(ciclo, t)}` : ''}</div>
-            ${ags.length ? `<ul class="space-y-0.5">${ags.map(a => `<li>${esc(a.nomeCompleto)} <span class="text-slate-400 text-xs">${esc(a.matricula)}${a.funcao !== 'agente' ? ' · ' + esc(nomeFuncao(a.funcao)) : ''}</span>${tagTroca(dia, a.id)}</li>`).join('')}</ul>` : '<div class="text-slate-400">Nenhum agente</div>'}
+            ${ags.length ? `<ul class="space-y-1">${ags.map(a => `<li class="text-sm">${esc(a.nomeGuerra || a.nomeCompleto)} <span class="text-slate-400 text-xs">${esc(a.matricula)}${a.funcao !== 'agente' ? ' · ' + esc(nomeFuncao(a.funcao)) : ''}</span>${tagTroca(dia, a.id)}</li>`).join('')}</ul>` : '<div class="text-slate-400">Nenhum agente</div>'}
           </div>
           ${dia.ausentes.length ? `<div class="rounded-lg bg-slate-50 p-2 text-xs"><div class="font-semibold text-slate-600 mb-1">Ausentes / trocas</div>${dia.ausentes.map(x => `<div>${esc(x.g.nomeGuerra || x.g.nomeCompleto)} — ${esc(x.motivo)}</div>`).join('')}</div>` : ''}
-          <div class="pt-1 border-t border-slate-100 text-xs text-slate-500">Efetivo total: ${sups.length + ags.length}</div>
-        </div></div>`;
+        </div>` : ''}
+      </div>`;
     });
   });
-  if (secao) html += (gr ? `<h2 class="text-sm font-semibold text-slate-600 mt-5 mb-2">${esc(gr)}</h2>` : '') + `<div class="grid gap-4 md:grid-cols-2">${secao}</div>`;
+  if (secao) html += (gr ? `<h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mt-5 mb-2">${esc(gr)}</h2>` : '') + `<div class="grid gap-3 md:grid-cols-2">${secao}</div>`;
   });
   html += blocoOcorrenciasDia(d) + blocoExtrasDia(d);
   $('main').innerHTML = html;
 }
+
 function mudarDia(n) { diaSel = addDays(diaSel, n); render(); }
 
 /* ============================================================
