@@ -3027,10 +3027,10 @@ function trImportarItens(itens) {
   });
   return { ok, pul, err, alertas };
 }
-function ocImportar(o) {                          // ordem: afastamentos, trocas de escala e, por fim, trocas de jornada
+function ocImportar(o) {                          // ordem: afastamentos, trocas de jornada e, por fim, trocas de escala (quem folga por troca de jornada pode assumir outro turno no mesmo dia)
   const tj = Array.isArray(o) ? o : (o && (o.trocasJornada || o.itens)) || [];
-  const r = { aus: ausImportarItens(o && o.ausencias), tr: trImportarItens(o && o.trocasEscala), tj: tjImportarItens(tj) };
-  return r;
+  const aus = ausImportarItens(o && o.ausencias), tjr = tjImportarItens(tj), tr = trImportarItens(o && o.trocasEscala);
+  return { aus, tr, tj: tjr };
 }
 async function tjImportar() {
   const f = $('ti-arq').files && $('ti-arq').files[0]; let txt = $('ti-txt').value; if (f) txt = await f.text();
