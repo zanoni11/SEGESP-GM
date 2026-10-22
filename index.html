@@ -2971,15 +2971,24 @@ function salvarTJ() {
 }
 /* ---------- Importar trocas de jornada (ex.: instrução, curso) ---------- */
 function tjFormImportar() {
-  openModal('Importar trocas de jornada', `<p class="text-xs text-slate-500 mb-2">Escolha o arquivo .json (ou cole o conteúdo). Cada item vira uma troca de jornada, conferida pelas mesmas regras do cadastro. O que já existir igual é ignorado e o que não puder ser registrado é listado.</p><input id="ti-arq" type="file" accept=".json,application/json" class="mb-2 text-sm"><textarea id="ti-txt" rows="6" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-mono" placeholder="ou cole aqui"></textarea>`,
+  openModal('Importar ocorrências', `<p class="text-xs text-slate-500 mb-2">Escolha o arquivo .json (ou cole o conteúdo) com trocas de jornada, trocas de escala e afastamentos (férias, dispensas). O guarda pode vir pelo id, pela matrícula ou pelo nome de guerra. Cada item é conferido pelas mesmas regras do cadastro; o que já existir igual é ignorado e o que não puder ser registrado é listado.</p><input id="ti-arq" type="file" accept=".json,application/json" class="mb-2 text-sm"><textarea id="ti-txt" rows="6" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-mono" placeholder="ou cole aqui"></textarea>`,
     `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="tjImportar()" class="${BTN_P}">Importar</button></div>`, true);
 }
+const ocNorm = x => String(x || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+function ocGuarda(it) {                          // localiza o guarda pelo id, pela matrícula ou pelo nome de guerra (ou completo)
+  if (!it) return null; if (it.guardaId && getGuarda(it.guardaId)) return getGuarda(it.guardaId);
+  const mt = String(it.matricula || '').replace(/\D/g, ''); if (mt) { const g = state.guardas.find(x => String(x.matricula || '').replace(/\D/g, '') === mt); if (g) return g; }
+  const n = ocNorm(it.nome); if (!n) return null;
+  const L = state.guardas.filter(x => ocNorm(x.nomeGuerra) === n); if (L.length === 1) return L[0];
+  const C = state.guardas.filter(x => ocNorm(x.nomeCompleto) === n); return C.length === 1 ? C[0] : null;
+}
+const ocRot = it => esc((it && (it.nome || it.matricula || it.guardaId)) || '?');
 function tjImportarItens(itens) {
   const ok = [], pul = [], err = [], alertas = [];
   (itens || []).forEach(it => {
-    const g = getGuarda(it && it.guardaId); if (!g) { err.push(`${esc(it && it.guardaId)}: guarda não existe`); return; }
+    const g = ocGuarda(it); if (!g) { err.push(`${ocRot(it)}: guarda não encontrado`); return; }
     const rot = `${nomeG(g.id)} · ${br(it.de)}${it.de === it.para ? ' (muda de turno)' : ' → ' + br(it.para)}`, mudar = it.de === it.para;
-    if (state.trocasJornada.some(t => t.guardaId === g.id && t.de === it.de && t.para === it.para && (t.turnoNovo || '') === (mudar ? (it.turnoNovo || t.turnoNovo || '') : '') && (t.turnoEntrada || '') === (it.turnoEntrada || ''))) { pul.push(rot + ' — já registrada'); return; }
+    if (state.trocasJornada.some(t => t.guardaId === g.id && t.de === it.de && t.para === it.para && (t.turnoNovo || '') === (mudar ? (it.turnoNovo || t.turnoNovo || '') : ''))) { pul.push(rot + ' — já registrada'); return; }
     const d = { gId: g.id, de: it.de, para: it.para, mudar, turnoE: mudar ? '' : (it.turnoEntrada || ''), obs: String(it.obs || '') }, v = validarTJ(d);
     if (v.erros.length) { err.push(`${rot}: ${v.erros[0]}`); return; }
     if (v.alertas.length) alertas.push(rot + ' — descanso abaixo de 12h');
@@ -2988,13 +2997,49 @@ function tjImportarItens(itens) {
   });
   return { ok, pul, err, alertas };
 }
+function ausImportarItens(itens) {
+  const ok = [], pul = [], err = [], alertas = [];
+  (itens || []).forEach(it => {
+    const g = ocGuarda(it); if (!g) { err.push(`${ocRot(it)}: guarda não encontrado`); return; }
+    const tipo = it.tipo, ini = it.inicio, fim = it.fim || it.inicio, rot = `${nomeG(g.id)} · ${AUS_TIPOS[tipo] ? AUS_TIPOS[tipo].nome : tipo} ${br(ini)}${fim !== ini ? ' a ' + br(fim) : ''}`;
+    if (!AUS_TIPOS[tipo]) { err.push(`${rot}: tipo inválido`); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ini || '') || !/^\d{4}-\d{2}-\d{2}$/.test(fim) || fim < ini) { err.push(`${rot}: datas inválidas`); return; }
+    if (state.ausencias.some(a => a.guardaId === g.id && a.tipo === tipo && a.inicio === ini && (a.fim || a.inicio) === fim)) { pul.push(rot + ' — já registrado'); return; }
+    const sob = state.ausencias.filter(a => a.guardaId === g.id && a.inicio <= fim && (!a.fim || a.fim >= ini));
+    if (sob.length) alertas.push(`${rot} — sobrepõe ${sob.map(a => AUS_TIPOS[a.tipo].nome.toLowerCase() + ' ' + br(a.inicio)).join(', ')}`);
+    state.ausencias.push({ id: uid('au_'), guardaId: g.id, tipo, inicio: ini, fim, obs: String(it.obs || ''), criadoEm: new Date().toISOString() });
+    ok.push(rot);
+  });
+  return { ok, pul, err, alertas };
+}
+function trImportarItens(itens) {
+  const ok = [], pul = [], err = [], alertas = [];
+  (itens || []).forEach(it => {
+    const A = ocGuarda(it && it.a), B = ocGuarda(it && it.b), da = it && it.a && it.a.data, db = (it && it.b && it.b.data) || null;
+    if (!A || !B) { err.push(`${ocRot(it && it.a)} ↔ ${ocRot(it && it.b)}: guarda não encontrado`); return; }
+    const rot = `${nomeG(A.id)} ${br(da)} ↔ ${nomeG(B.id)}${db ? ' ' + br(db) : ' (devolução pendente)'}`;
+    if (state.trocas.some(t => t.a.guardaId === A.id && t.a.data === da && t.b.guardaId === B.id && (t.b.data || null) === db)) { pul.push(rot + ' — já registrada'); return; }
+    const v = validarTroca({ aId: A.id, da, bId: B.id, db });
+    if (v.erros.length) { err.push(`${rot}: ${v.erros[0]}`); return; }
+    if (v.alertas.length) alertas.push(rot + ' — descanso abaixo de 12h');
+    state.trocas.push({ id: uid('tr_'), criadoEm: new Date().toISOString(), a: { guardaId: A.id, data: da }, b: { guardaId: B.id, data: db }, obs: String(it.obs || ''), entradas: v.entradas });
+    ok.push(rot);
+  });
+  return { ok, pul, err, alertas };
+}
+function ocImportar(o) {                          // ordem: afastamentos, trocas de escala e, por fim, trocas de jornada
+  const tj = Array.isArray(o) ? o : (o && (o.trocasJornada || o.itens)) || [];
+  const r = { aus: ausImportarItens(o && o.ausencias), tr: trImportarItens(o && o.trocasEscala), tj: tjImportarItens(tj) };
+  return r;
+}
 async function tjImportar() {
   const f = $('ti-arq').files && $('ti-arq').files[0]; let txt = $('ti-txt').value; if (f) txt = await f.text();
   let o; try { o = JSON.parse(txt); } catch (e) { toast('Arquivo inválido', 'error'); return; }
-  const itens = Array.isArray(o) ? o : o && o.itens; if (!Array.isArray(itens)) { toast('Não parece um arquivo de trocas de jornada', 'error'); return; }
-  const r = tjImportarItens(itens); if (r.ok.length) { auditar('Troca de jornada', `${r.ok.length} troca(s)`, 'importou'); save(); }
+  if (!Array.isArray(o) && !(o && (o.itens || o.trocasJornada || o.trocasEscala || o.ausencias))) { toast('Não parece um arquivo de ocorrências', 'error'); return; }
+  const R = ocImportar(o), soma = k => R.aus[k].concat(R.tr[k].map(x => 'Troca de escala: ' + x), R.tj[k].map(x => 'Jornada: ' + x)), r = { ok: soma('ok'), pul: soma('pul'), err: soma('err'), alertas: soma('alertas') };
+  if (r.ok.length) { auditar('Ocorrências', `${R.aus.ok.length} afastamento(s), ${R.tr.ok.length} troca(s) de escala, ${R.tj.ok.length} troca(s) de jornada`, 'importou'); save(); }
   const lista = (t, c, a) => a.length ? `<div class="mt-2 ${c}"><b>${t} (${a.length})</b><div class="text-xs">${a.join('<br>')}</div></div>` : '';
-  openModal('Importar trocas de jornada', `<div class="text-sm"><b>${r.ok.length}</b> troca(s) registrada(s).${lista('Já existiam', 'text-slate-600', r.pul)}${lista('Atenção: descanso abaixo de 12h (registradas)', 'text-amber-700', r.alertas)}${lista('Não registradas', 'text-red-700', r.err)}</div>`, `<div class="flex justify-end"><button onclick="closeModal();render()" class="${BTN_P}">Fechar</button></div>`, true);
+  openModal('Importar ocorrências', `<div class="text-sm"><b>${r.ok.length}</b> registrada(s): ${R.aus.ok.length} afastamento(s), ${R.tr.ok.length} troca(s) de escala e ${R.tj.ok.length} troca(s) de jornada.${lista('Já existiam', 'text-slate-600', r.pul)}${lista('Atenção (registradas)', 'text-amber-700', r.alertas)}${lista('Não registradas', 'text-red-700', r.err)}</div>`, `<div class="flex justify-end"><button onclick="closeModal();render()" class="${BTN_P}">Fechar</button></div>`, true);
   render();
 }
 function excluirTJ(id) {
@@ -3046,7 +3091,7 @@ function viewOcorrencias() {
   $('main').innerHTML = `
     <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
       ${navData('mudarMes(-1)', nomeMes(mesSel), 'mudarMes(1)')}
-      <div class="flex gap-2 flex-wrap"><button onclick="formTroca()" class="${BTN_O}">+ Troca</button><button onclick="formTJ()" class="${BTN_O}">+ Jornada</button><button onclick="tjFormImportar()" class="${BTN_G}">Importar jornadas</button><button onclick="formAusencia('')" class="${BTN_P}">+ Afastamento</button></div></div>
+      <div class="flex gap-2 flex-wrap"><button onclick="formTroca()" class="${BTN_O}">+ Troca</button><button onclick="formTJ()" class="${BTN_O}">+ Jornada</button><button onclick="tjFormImportar()" class="${BTN_G}">Importar ocorrências</button><button onclick="formAusencia('')" class="${BTN_P}">+ Afastamento</button></div></div>
     <div class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3 mb-4">
       ${cardNum(hoje, 'Ausentes hoje', 'text-slate-800')}${cardNum(cont('ferias'), 'Férias', 'text-violet-700')}${cardNum(cont('atestado'), 'Atestados', 'text-rose-700')}
       ${cardNum(cont('afastamento'), 'Afastamentos', 'text-slate-700')}${cardNum(cont('dispensa'), 'Dispensas', 'text-cyan-700')}${cardNum(trMes.length, 'Trocas', 'text-violet-700')}${cardNum(tjMes.length, 'Trocas de jornada', 'text-teal-700')}</div>
