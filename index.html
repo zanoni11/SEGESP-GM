@@ -5401,13 +5401,14 @@ const eeDias = ee => { const r = []; for (let k = ee.inicio; k <= ee.fim; k = ee
 const eeComp = (ee, g, k) => !!(ee.g[g.id] && (ee.g[g.id].comp || []).includes(k));
 const eeAus = (g, k) => !!ausenciaDoDia(g.id, k);
 const eePPCEq = (ee, g) => (ee && ee.ppcIntegrado && (ee.ppcEquipe || {})[g.id]) || '';   // PPC integrado: equipe de área em que trabalha no recesso
+const eePPCModo = ee => !ee || !ee.ppcIntegrado ? 'proprio' : (ee.ppcModo || 'todos');   // 'eco': só o apoio à equipe sem par muda de equipe
 const eePPCJan = ee => ({ ini: ee.ppcIni || eeAdd(ee.inicio, 1), fim: ee.ppcFim || ee.fim });   // fora da janela todos seguem a escala normal
 const eePPCJanG = (ee, g) => { const o = (ee.ppcJan || {})[g.id], j = eePPCJan(ee); return o ? { ini: o.ini || j.ini, fim: o.fim || j.fim, propria: true } : j; };   // datas da troca deste guarda (editáveis)
 const eePPCNoDia = (ee, g, k) => { const eq = eePPCEq(ee, g); if (!eq) return ''; const j = eePPCJanG(ee, g); return k >= j.ini && k <= j.fim ? eq : ''; };
 const eeBase = (g, k) => { const ee = eeAtual(), eq = eePPCNoDia(ee, g, k); return eq ? eePPCEsc(ee, g, eq).M[k] : turnoGuarda(g, parseISO(k)); };
 function eeNovaBase(ano) {
   return { nome: `Fim de Ano ${ano}/${ano + 1}`, ano, anoAnt: ano - 1, inicio: `${ano}-12-20`, fim: `${ano + 1}-01-08`,
-    natal: { dias: [`${ano}-12-24`, `${ano}-12-25`], inicioComp: `${ano}-12-20` }, anoNovo: { dias: [`${ano}-12-31`, `${ano + 1}-01-01`], inicioComp: `${ano}-12-30` },
+    ppcIntegrado: true, ppcModo: 'eco', ppcApoio: 2, natal: { dias: [`${ano}-12-24`, `${ano}-12-25`], inicioComp: `${ano}-12-20` }, anoNovo: { dias: [`${ano}-12-31`, `${ano + 1}-01-01`], inicioComp: `${ano}-12-30` },
     expediente: { inicio: `${ano}-12-24`, fim: `${ano + 1}-01-03` }, minimo: { agentes: 4, supervisor: 1 } };
 }
 function eeTurnos(ee, g) {                       // plantões do ciclo do guarda no período (com folga para os blocos)
@@ -5462,7 +5463,7 @@ function eeValida(ee, g) {                        // pendências do guarda (avis
   const idx = c.map(k => S.findIndex(s => s.k === k));
   if (idx.some(i => i < 0)) { p.push('há data que não é plantão deste guarda'); return p; }
   if (idx.some((v, j) => v !== idx[0] + j)) p.push(`as ${n} escalas não são seguidas no ciclo`);
-  if (c[0] < alvo.inicioComp) p.push('começa antes de ' + brCurto(parseISO(alvo.inicioComp)));
+  const cb = eeCompDoBloco(ee, g, d.grupo); if (cb && cb.join() !== c.join()) p.push('datas diferentes das da sua metade da equipe');
   const b = eeBloco(ee, g); if (b && (b.bs > alvo.dias[0] || (b.be && b.be < alvo.dias[alvo.dias.length - 1]))) p.push('a folga não cobre ' + alvo.dias.map(k => brCurto(parseISO(k))).join(' e '));
   alvo.dias.forEach(k => { if (S.some(s => s.k === k) && !c.includes(k)) p.push('trabalha em ' + brCurto(parseISO(k))); });
   if ((getEquipe(g.equipeId) || {}).grupo === 'COMON') eeCentralFalta(ee).filter(x => x.esc.includes(g) && eeComp(ee, g, x.k)).forEach(x => p.push('deixa a Central sem ninguém em ' + brCurto(parseISO(x.k)) + ' (' + (x.t === 'D' ? 'diurno' : 'noturno') + ')'));
@@ -5472,6 +5473,28 @@ function eeValida(ee, g) {                        // pendências do guarda (avis
 }
 /* ---------- unidades (metades) ---------- */
 const EE_ORD_GRUPO = ['Operacional', 'Almoxarifado', 'ROMU', 'PPC', 'COMON', 'Defesa Civil', 'GTAM', 'Vigias'];
+/* ---------- folgas por bloco da equipe: a metade do Natal compensa n plantões seguidos da equipe e a do Ano Novo os n seguintes ---------- */
+const eeChaveBloco = (ee, g) => { const e = getEquipe(eePPCEq(ee, g) || g.equipeId) || {}; if (e.grupo === 'Almoxarifado') { const t = state.equipes.find(x => x.grupo === 'Operacional' && String(e.nome || '').toUpperCase().endsWith(' ' + x.nome.toUpperCase())); if (t) return t.id; } return e.id || ''; };
+function eeBlocoOps(ee, eqId, n) {                 // opções de virada da equipe: sem intervalo nem sobreposição entre as metades
+  const ch = 'bl|' + ee.id + '|' + eqId + '|' + n + '|' + ee.inicio + ee.fim + ee.natal.dias.join() + ee.anoNovo.dias.join(); if (_eeMemo[ch]) return _eeMemo[ch];
+  const S = []; for (let k = eeAdd(ee.inicio, -12); k <= eeAdd(ee.fim, 12); k = eeAdd(k, 1)) { const t = turno(eqId, parseISO(k)); if (t === 'D' || t === 'N') S.push({ k, t }); }
+  const N0 = ee.natal.dias[0], N1 = ee.natal.dias[ee.natal.dias.length - 1], A0 = ee.anoNovo.dias[0], A1 = ee.anoNovo.dias[ee.anoNovo.dias.length - 1], out = [];
+  for (let i = 0; i + 2 * n - 1 < S.length; i++) {
+    const N = S.slice(i, i + n).map(s => s.k), A = S.slice(i + n, i + 2 * n).map(s => s.k), pN = S[i - 1], nN = S[i + n], pA = S[i + n - 1], nA = S[i + 2 * n];
+    const bsN = pN ? eeAdd(pN.k, 1) : eeAdd(N[0], -3), beN = eeAdd(nN.k, -1), bsA = eeAdd(pA.k, 1), beA = nA ? eeAdd(nA.k, -1) : null;
+    if (N[0] < ee.inicio || A[n - 1] > ee.fim) continue;                                   // compensadas dentro do período
+    if (bsN > N0 || beN < N1 || bsA > A0 || (beA && beA < A1)) continue;                   // cada metade livre nos seus feriados
+    out.push({ N, A, virada: nN.k, folgaN: [bsN, beN], folgaA: [bsA, beA], custo: Math.abs(eeDif(bsN, beN) + 1 - 9) + (beA ? Math.abs(eeDif(bsA, beA) + 1 - 9) : 0) });
+  }
+  out.sort((a, b) => a.custo - b.custo || (a.N[0] < b.N[0] ? -1 : 1));
+  return (_eeMemo[ch] = out);
+}
+function eeBlocoEq(ee, g) {                        // bloco escolhido para a equipe do guarda
+  const eq = eeChaveBloco(ee, g); if (!eq) return null; const ops = eeBlocoOps(ee, eq, eeNComp(g)); if (!ops.length) return null;
+  let i = (ee.blocos || {})[eq] || 0; if (i >= ops.length) i = 0; return { eq, ops, i, op: ops[i] };
+}
+const eeCompDoBloco = (ee, g, gr) => { const b = eeBlocoEq(ee, g); if (!b) return null; const c = gr === 'A' ? b.op.A : b.op.N; return c.every(k => ['D', 'N'].includes(eeBase(g, k))) ? c.slice() : null; };
+function eeSetBloco(eq, i) { const ee = eeAtual(); if (!exigir('especial.editar')) return; ee.blocos = ee.blocos || {}; ee.blocos[eq] = +i; _eeMemo = {}; eeAutoComp(ee); eeRecalc(ee, false); save(); render(); }
 function eeUnidades(ee) {
   const un = {};
   state.guardas.filter(g => eeEntra(ee, g)).forEach(g => {
@@ -5519,7 +5542,8 @@ function eeAutoComp(ee) {
     const d = ee.g[g.id] = ee.g[g.id] || { h: '', grupo: '', comp: [] };
     if (d.fixo && !eeCompInvalida(ee, g)) return;            // fixadas à mão são mantidas, exceto se caírem fora dos plantões do guarda (escala mudou depois)
     d.fixo = false;
-    const c = eeCands(ee, g, d.grupo)[0]; d.comp = c ? c.comp.slice() : [];
+    const cb = eeCompDoBloco(ee, g, d.grupo); if (cb) { d.comp = cb; return; }     // mesmas datas da metade da equipe
+    const c = eeCands(ee, g, d.grupo)[0]; d.comp = c ? c.comp.slice() : [];         // sem bloco possível (ex.: transição de equipe): bloco próprio
   });
   eeAjustaCentral(ee);
 }
@@ -5579,6 +5603,7 @@ function eeDistribuirPPC(ee) {                      // cada PPC junta-se à equi
       if (!cand.length) break; ee.ppcEquipe[cand[0].id] = e.id; ee.ppcApoioIds = [...(ee.ppcApoioIds || []), cand[0].id];
     }
   });
+  if (eePPCModo(ee) === 'eco') { const m = {}; (ee.ppcApoioIds || []).forEach(id => { if (ee.ppcEquipe[id]) m[id] = ee.ppcEquipe[id]; }); ee.ppcEquipe = m; }   // os demais PPC ficam na própria escala
 }
 function eePPCTrocas(ee) {                           // trocas de equipe no recesso (para o quadro e o PDF)
   const j = eePPCJan(ee);
@@ -5628,8 +5653,8 @@ function eeCardPPC(ee) {
   if (!ee.ppcIntegrado) return '';
   const eqs = eeEquipesRua(), T = eePPCTrocas(ee), j = eePPCJan(ee), cont = e => eeElenco(e).ag.filter(g => eeEntra(ee, g)).length;
   const pares = state.equipes.filter(e => e.grupo === 'PPC').map(p => { const e = eePPCPar(ee, p); return `${esc(p.nome)} → ${e ? esc(e.nome) : '<b class="text-amber-700">sem par</b>'}`; }).join(' · ');
-  return `<div class="${CARD} p-3 mb-3"><div class="flex justify-between items-center gap-2 mb-1"><b class="text-sm">PPC integrado às equipes de área</b><button onclick="eeRedistribuirPPC()" class="${BTN_G} !py-1 !px-2 text-xs">Refazer distribuição</button></div>
-    <p class="text-[11px] text-slate-500 mb-1">De ${brCurto(parseISO(j.ini))} a ${brCurto(parseISO(j.fim))} cada PPC trabalha com a equipe de área que tem os mesmos dias (fora disso, escala normal). Pares: ${pares}.</p>
+  return `<div class="${CARD} p-3 mb-3"><div class="flex justify-between items-center gap-2 mb-1"><b class="text-sm">${eePPCModo(ee) === 'eco' ? 'PPC ECO (apoio à equipe sem par)' : 'PPC integrado às equipes de área'}</b><button onclick="eeRedistribuirPPC()" class="${BTN_G} !py-1 !px-2 text-xs">Refazer distribuição</button></div>
+    <p class="text-[11px] text-slate-500 mb-1">De ${brCurto(parseISO(j.ini))} a ${brCurto(parseISO(j.fim))} ${eePPCModo(ee) === 'eco' ? 'estes guardas trabalham com a equipe sem par; os demais PPC seguem a própria escala, reforçando o dia e passando o 2º dia para a noite quando faltar gente' : 'cada PPC trabalha com a equipe de área que tem os mesmos dias'} (fora disso, escala normal). Pares: ${pares}.</p>
     <p class="text-[11px] text-slate-500 mb-2">Agentes por equipe: ${eqs.map(e => `${esc(e.nome)} ${cont(e)}`).join(' · ')}</p>
     ${T.map(x => `<div class="flex items-center justify-between gap-2 py-1 border-t border-slate-100 text-sm ${x.ok ? '' : 'bg-red-50'}"><span><button onclick="eeFichaTroca('${x.g.id}')" class="underline decoration-dotted">${esc(eeNome(x.g))}</button> <span class="text-[11px] text-slate-500">${esc(x.orig)}</span>${x.apoio ? ' <span class="text-[10px] px-1 rounded bg-amber-100 text-amber-800">apoio</span>' : ''}<br><span class="text-[10px] text-slate-500">começa ${x.entra ? eeDia(x.entra) : '—'} · volta à própria escala ${x.volta ? eeDia(x.volta) : '—'}${x.perdidos.length ? ` · ${x.perdidos.length} folga(s) de ajuste` : ''}${(ee.ppcJan || {})[x.g.id] ? ' · datas próprias' : ''}</span></span><select onchange="eeSetPPC('${x.g.id}', this.value)" class="border border-slate-300 rounded px-1 py-1 text-sm">${eqs.map(e => `<option value="${e.id}" ${eePPCEq(ee, x.g) === e.id ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>`).join('')}</div>`;
 }
@@ -5651,7 +5676,8 @@ function eeRefazCob(ee, tentativas = 30) {       // mantém o que foi colocado �
     rua.forEach(s => {
       let n = falta(s);
       while (n > 0) {
-        const cands = pool.filter(p => dispo(p, s.k)).sort(ordemP); let ok = null;
+        const seg = p => { const k0 = eeAdd(s.k, -1); return eeBase(p, k0) === 'D' && !eeComp(ee, p, k0) && !eeAus(p, k0) ? 1 : 0; };   // 2º dia do PPC
+        const cands = pool.filter(p => dispo(p, s.k)).sort((a, b) => (s.t === 'N' ? seg(b) - seg(a) : seg(a) - seg(b)) || ordemP(a, b)); let ok = null;
         for (const p of cands) {
           if (s.t === 'D') { ok = { p }; break; }
           const k2 = eeAdd(s.k, 1), dia2 = eeBase(p, k2) === 'D' && !eeComp(ee, p, k2) && !eeAus(p, k2);
@@ -5680,17 +5706,17 @@ function eeRecalc(ee, tudo) {                     // tudo: refaz grupos e escala
   eeRefazCob(ee);
 }
 function eeCusto(ee) { const R = eeRuaDados(ee); return eeCentralFalta(ee).length * 1000 + R.reduce((a, x) => a + x.ex.length * 1000 + (x.supSem ? 1000 : 0) + x.sc.filter(c => !c.g).length * 1000, 0) + R.reduce((a, x) => a + x.ppc.length, 0); }
-function eeMelhorar(ee, ms = 9000) {              // troca o bloco de um guarda por outro válido do mesmo grupo, se isso reduzir extras (as metades não mudam)
-  const t0 = Date.now(); let custo = (eeRefazCob(ee, 8), eeCusto(ee)), melhorou = 0;
+function eeMelhorar(ee, ms = 9000) {              // testa as viradas possíveis de cada equipe (a metade inteira muda junto) e fica com a que exige menos extras
+  const t0 = Date.now(); ee.blocos = ee.blocos || {}; eeAutoComp(ee); let custo = (eeRefazCob(ee, 8), eeCusto(ee)), melhorou = 0;
+  const eqs = [...new Set(state.guardas.filter(g => eeEntra(ee, g)).map(g => eeChaveBloco(ee, g)).filter(Boolean))];
   for (let rod = 0; rod < 2; rod++) {
     let mexeu = false;
-    for (const g of state.guardas) {
-      if (Date.now() - t0 > ms) return { custo, melhorou };
-      const d = ee.g[g.id]; if (!d || !eeEntra(ee, g) || d.fixo || !d.grupo) continue;
-      const alts = eeCands(ee, g, d.grupo).filter(c => c.comp.join() !== d.comp.join() && c.custo <= 40); if (!alts.length) continue;
-      const antes = d.comp.slice();
-      for (const c of alts) { d.comp = c.comp.slice(); eeRefazCob(ee, 8); const novo = eeCusto(ee); if (novo < custo) { custo = novo; melhorou++; mexeu = true; break; } d.comp = antes.slice(); }
-      if (d.comp.join() === antes.join()) { eeRefazCob(ee, 8); }
+    for (const eq of eqs) {
+      const g0 = state.guardas.find(g => eeEntra(ee, g) && eeChaveBloco(ee, g) === eq), b = g0 && eeBlocoEq(ee, g0); if (!b || b.ops.length < 2) continue;
+      let best = b.i, bc = custo;
+      for (let i = 0; i < b.ops.length; i++) { if (i === b.i || Date.now() - t0 > ms) continue; ee.blocos[eq] = i; eeAutoComp(ee); eeRefazCob(ee, 8); const c = eeCusto(ee); if (c < bc) { bc = c; best = i; } }
+      ee.blocos[eq] = best; if (best !== b.i) { custo = bc; melhorou++; mexeu = true; }
+      eeAutoComp(ee); eeRefazCob(ee, 8);
     }
     if (!mexeu) break;
   }
@@ -5741,7 +5767,7 @@ function eeAbaResumo(ee, r, pode) {
     ${chip('supervisor coberto por outro', r.supCob)}${chip('supervisor a definir', r.supSem, r.supSem ? 'text-amber-700' : 'text-emerald-700')}${chip(`repetem ${ee.anoAnt}`, r.rep)}${chip(`invertidos em relação a ${ee.anoAnt}`, r.inv)}${r.romu ? chip('dias com ROMU abaixo de 2', r.romu, 'text-red-700') : ''}${r.central ? chip('turnos da Central sem ninguém', r.central, 'text-red-700') : ''}${r.compInv ? chip('compensadas fora do plantão', r.compInv, 'text-red-700') : ''}${chip('supervisores no rodízio', r.supRod)}${chip('extras de supervisor', r.supExtras, r.supExtras ? 'text-amber-700' : '')}</div>
     ${r.semHist ? `<div class="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2 mb-3">${r.semHist} guarda(s) sem registro de ${ee.anoAnt}: são distribuídos para equilibrar as metades. ${pode ? 'Preencha na aba Folgas ou use <b>Mais ▾ › Importar histórico</b>.' : ''}</div>` : ''}
     ${pode ? `<div class="flex gap-2 flex-wrap mb-3"><button onclick="eeAuto()" class="${BTN_P}">Montar automaticamente</button><button onclick="eeRefazer()" class="${BTN_O}">Refazer coberturas</button><button onclick="eeOtimizar()" class="${BTN_O}">Otimizar</button></div>
-    <p class="text-xs text-slate-500 mb-3"><b>Montar automaticamente</b> inverte o ano anterior, divide cada equipe ao meio e escolhe os 3 plantões seguidos de cada guarda (4 para vigias e defesa civil) (quem foi fixado à mão não muda). <b>Refazer coberturas</b> só refaz PPC, supervisor e extras. <b>Otimizar</b> tenta reduzir extras (leva alguns segundos).</p>` : ''}
+    <p class="text-xs text-slate-500 mb-3"><b>Montar automaticamente</b> inverte o ano anterior, divide cada equipe ao meio e monta os blocos: a metade do Natal compensa 3 plantões seguidos da equipe (4 para vigias e defesa civil) e a do Ano Novo compensa os seguintes, sem intervalo; todos da mesma metade folgam nas mesmas datas (quem foi fixado à mão não muda). <b>Refazer coberturas</b> só refaz PPC, supervisor e extras. <b>Otimizar</b> testa as viradas possíveis de cada equipe para reduzir extras (leva alguns segundos).</p>` : ''}
     <div class="${CARD} p-3"><div class="font-semibold text-sm mb-2">Natal × Ano Novo por equipe</div><table class="w-full text-xs"><thead><tr class="text-left text-slate-500"><th>Equipe</th><th class="text-center">${ee.anoAnt} Natal</th><th class="text-center">${ee.anoAnt} A.Novo</th><th class="text-center">${ee.ano} Natal</th><th class="text-center">${ee.ano} A.Novo</th></tr></thead><tbody>
     ${un.map(u => { const c = (f, v) => u.membros.filter(g => D(g)[f] === v).length, n = c('grupo', 'N'), a = c('grupo', 'A'), des = Math.abs(n - a) > 1; return `<tr class="border-t border-slate-100"><td class="py-1">${esc(u.nome)}</td><td class="text-center">${c('h', 'N')}</td><td class="text-center">${c('h', 'A')}</td><td class="text-center ${des ? 'text-amber-700 font-semibold' : ''}">${n}</td><td class="text-center ${des ? 'text-amber-700 font-semibold' : ''}">${a}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
@@ -5754,11 +5780,17 @@ function eeLinhaGuarda(ee, g, pode) {
     ${pode ? `<button onclick="eeFormGuarda('${g.id}')" class="${BTN_G}">Plantões</button>` : ''}</div>
     <div class="text-[11px] mt-1 ${av.length ? 'text-amber-700' : 'text-slate-600'}">${d.comp && d.comp.length ? d.comp.map(k => `${eeDia(k)} ${eeBase(g, k)}`).join(' · ') : 'sem escalas compensadas'}${b && b.be ? ` · folga ${brCurto(parseISO(b.bs))} a ${brCurto(parseISO(b.be))} (${b.len} dias) · retorno ${eeDia(b.ret)}` : ''}${av.length ? '<br>⚠ ' + esc(av.join('; ')) : ''}</div></div>`;
 }
+function eeViradaHTML(ee, u, pode) {                // datas de cada metade da equipe (todos da metade folgam juntos) e escolha da virada
+  const vistos = new Set(), sh = k => k ? brCurto(parseISO(k)) : '…';
+  return u.membros.map(g => { const b = eeBlocoEq(ee, g); if (!b || vistos.has(b.eq)) return ''; vistos.add(b.eq); const nm = (getEquipe(b.eq) || {}).nome || '';
+    const txt = o => `Natal: compensa ${o.N.map(sh).join(', ')} · folga ${sh(o.folgaN[0])} a ${sh(o.folgaN[1])} | Ano Novo: compensa ${o.A.map(sh).join(', ')} · folga ${sh(o.folgaA[0])} a ${sh(o.folgaA[1])}`;
+    return `<div class="text-[11px] bg-sky-50 border border-sky-200 rounded-lg p-2 my-2"><b>${esc(nm)}</b> — virada em ${eeDia(b.op.virada)}<br>${txt(b.op)}${pode && b.ops.length > 1 ? `<select onchange="eeSetBloco('${b.eq}', this.value)" class="mt-1 w-full border border-slate-300 rounded px-1 py-1 text-[11px] bg-white">${b.ops.map((o, i) => `<option value="${i}" ${i === b.i ? 'selected' : ''}>Virada em ${eeDia(o.virada)}: ${txt(o)}</option>`).join('')}</select>` : ''}</div>`; }).join('');
+}
 function eeAbaFolgas(ee, pode) {
   const un = eeUnidades(ee), exp = state.guardas.filter(g => g.equipeId && eeExped(g)), fora = state.guardas.filter(g => g.equipeId && !eeExped(g) && (ee.g[g.id] || {}).fora);
   return `<div class="mb-2"><select onchange="eeUn=this.value;render()" class="${INPUT}"><option value="">Todas as equipes</option>${un.map(u => `<option value="${esc(u.chave)}" ${eeUn === u.chave ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}</select></div>
     ${un.filter(u => !eeUn || u.chave === eeUn).map(u => { const n = u.membros.filter(g => ee.g[g.id].grupo === 'N').length, a = u.membros.filter(g => ee.g[g.id].grupo === 'A').length;
-      return `<details class="${CARD} p-3 mb-2" ${eeUn || u.membros.some(g => eeValida(ee, g).length) ? 'open' : ''}><summary class="cursor-pointer font-semibold text-sm">${esc(u.nome)} <span class="text-xs font-normal ${Math.abs(n - a) > 1 ? 'text-amber-700' : 'text-slate-500'}">· Natal ${n} · Ano Novo ${a}</span></summary>${u.membros.map(g => eeLinhaGuarda(ee, g, pode)).join('')}</details>`; }).join('')}
+      return `<details class="${CARD} p-3 mb-2" ${eeUn || u.membros.some(g => eeValida(ee, g).length) ? 'open' : ''}><summary class="cursor-pointer font-semibold text-sm">${esc(u.nome)} <span class="text-xs font-normal ${Math.abs(n - a) > 1 ? 'text-amber-700' : 'text-slate-500'}">· Natal ${n} · Ano Novo ${a}</span></summary>${eeViradaHTML(ee, u, pode)}${u.membros.map(g => eeLinhaGuarda(ee, g, pode)).join('')}</details>`; }).join('')}
     ${fora.length && !eeUn ? `<div class="${CARD} p-3 mb-2 text-sm"><b>Fora do rodízio</b><div class="text-xs text-slate-600">${fora.map(g => esc(eeNome(g))).join(', ')}</div></div>` : ''}
     ${exp.length && !eeUn ? `<div class="${CARD} p-3 mb-2 text-sm"><b>Expediente</b> — folga coletiva de ${br(ee.expediente.inicio)} a ${br(ee.expediente.fim)}<div class="text-xs text-slate-600">${exp.map(g => esc(eeNome(g))).join(', ')}</div></div>` : ''}`;
 }
@@ -5869,7 +5901,7 @@ function eeSetGrupo(gid, v) {
 }
 function eeAuto() {
   if (!exigir('especial.editar')) return; const ee = eeAtual();
-  confirmar('Montar automaticamente', `<p>Refaz os grupos (Natal / Ano Novo), os plantões compensados de cada guarda (3, ou 4 para vigias e defesa civil) e as coberturas. Guardas <b>fixados</b> à mão não mudam; coberturas colocadas à mão são mantidas se ainda valerem.</p>`, () => { eeRecalc(ee, true); auditar('Escala especial', ee.nome, 'montou automaticamente'); save(); render(); toast('Escala montada'); }, 'Montar');
+  confirmar('Montar automaticamente', `<p>Refaz os grupos (Natal / Ano Novo), os plantões compensados de cada guarda (3, ou 4 para vigias e defesa civil) e as coberturas. Guardas <b>fixados</b> à mão não mudam; coberturas colocadas à mão são mantidas se ainda valerem.</p>`, () => { ee.blocos = {}; eeRecalc(ee, true); auditar('Escala especial', ee.nome, 'montou automaticamente'); save(); render(); toast('Escala montada'); }, 'Montar');
 }
 function eeRefazer() { if (!exigir('especial.editar')) return; const ee = eeAtual(); eeRecalc(ee, false); save(); render(); toast('Coberturas refeitas'); }
 function eeOtimizar() {
@@ -5885,7 +5917,7 @@ function eeFormNova() {
 }
 function eeCriarForm() {
   if (!exigir('especial.editar')) return; const ano = parseInt($('ee-ano').value, 10); if (!(ano >= 2000 && ano <= 2100)) { toast('Informe o ano', 'error'); return; }
-  const ee = eeCriar(ano, $('ee-nome').value.trim()); state.escalasEspeciais.push(ee); eeRecalc(ee, true); auditar('Escala especial', ee.nome, 'criou'); eeSel = ee.id; eeTab = 'resumo'; closeModal(); save(); render(); toast('Escala especial criada. Preencha o histórico do ano anterior e monte de novo, se quiser.');
+  const ee = eeCriar(ano, $('ee-nome').value.trim()); state.escalasEspeciais.push(ee); eeSel = ee.id; eeDistribuirPPC(ee); _eeMemo = {}; eeRecalc(ee, true); auditar('Escala especial', ee.nome, 'criou'); eeSel = ee.id; eeTab = 'resumo'; closeModal(); save(); render(); toast('Escala especial criada. Preencha o histórico do ano anterior e monte de novo, se quiser.');
 }
 function eeExcluir(id) { const ee = eeGet(id); if (!ee || !exigir('especial.editar')) return; confirmar('Excluir escala especial', `<p>Excluir <b>${esc(ee.nome)}</b>? Não dá para desfazer (exporte o plano antes, se precisar guardar).</p>`, () => { state.escalasEspeciais = state.escalasEspeciais.filter(x => x.id !== id); if (eeSel === id) eeSel = ''; auditar('Escala especial', ee.nome, 'excluiu'); save(); render(); }, 'Excluir', true); }
 function eeMais() {
@@ -5973,7 +6005,8 @@ function eeFormParam() {
     <div class="font-semibold text-sm">Folga de Ano Novo</div><div class="grid grid-cols-3 gap-2">${c('ep-a1', 'Feriado (de)', ee.anoNovo.dias[0])}${c('ep-a2', 'Feriado (até)', ee.anoNovo.dias[ee.anoNovo.dias.length - 1])}${c('ep-ac', '1ª escala compensada a partir de', ee.anoNovo.inicioComp)}</div>
     <div class="font-semibold text-sm">Expediente (folga coletiva)</div><div class="grid grid-cols-2 gap-2">${c('ep-e1', 'De', ee.expediente.inicio)}${c('ep-e2', 'Até', ee.expediente.fim)}</div>
     <div><label class="block text-xs text-slate-500 mb-1">Mínimo de agentes por plantão de rua (+ 1 supervisor)</label><input id="ep-min" type="number" min="1" max="10" value="${ee.minimo.agentes}" class="${INPUT}"></div>
-    <label class="flex items-start gap-2 text-sm"><input id="ep-ppcint" type="checkbox" class="mt-1" ${ee.ppcIntegrado ? 'checked' : ''}> <span><b>PPC integrado às equipes de área</b><br><span class="text-[11px] text-slate-500">No recesso, o PPC é distribuído entre as equipes de área e faz o ciclo delas (diurno e noturno), em vez de cobrir por troca de jornada.</span></span></label>
+    <div><label class="block text-xs text-slate-500 mb-1">PPC no recesso</label><select id="ep-ppcmodo" class="${INPUT}">${[['eco', 'Na própria escala + PPC ECO (só o apoio à ECO muda de equipe)'], ['todos', 'Todo o PPC integrado às equipes de área'], ['proprio', 'Todo o PPC na própria escala']].map(([v, t]) => `<option value="${v}" ${eePPCModo(ee) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <p class="text-[11px] text-slate-500 mt-1">Na própria escala, o PPC reforça o dia e, se faltar gente à noite, troca o diurno do 2º dia pela noite. O PPC ECO acompanha a equipe sem par durante a janela abaixo.</p></div>
     <div class="grid grid-cols-3 gap-2">${c('ep-pi', 'PPC integrado de', eePPCJan(ee).ini)}${c('ep-pf', 'até', eePPCJan(ee).fim)}<div><label class="block text-xs text-slate-500 mb-1">Apoio à equipe sem par</label><select id="ep-pa" class="${INPUT}">${[2, 3].map(n => `<option ${(ee.ppcApoio || 2) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div></div>`,
     `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button onclick="eeSalvarParam()" class="${BTN_P}">Salvar</button></div>`, true);
 }
@@ -5982,10 +6015,12 @@ function eeSalvarParam() {
   if (!v('ep-ini') || !v('ep-fim') || v('ep-fim') < v('ep-ini')) { toast('Confira o período', 'error'); return; }
   ee.nome = v('ep-nome').trim() || ee.nome; ee.inicio = v('ep-ini'); ee.fim = v('ep-fim'); ee.natal = { dias: per(v('ep-n1'), v('ep-n2')), inicioComp: v('ep-nc') }; ee.anoNovo = { dias: per(v('ep-a1'), v('ep-a2')), inicioComp: v('ep-ac') };
   ee.expediente = { inicio: v('ep-e1'), fim: v('ep-e2') }; ee.minimo.agentes = Math.max(1, parseInt(v('ep-min'), 10) || 4); closeModal();
-  const ppc = $('ep-ppcint').checked, jan = [v('ep-pi'), v('ep-pf'), +v('ep-pa')], mudouJan = jan[0] !== eePPCJan(ee).ini || jan[1] !== eePPCJan(ee).fim || jan[2] !== (ee.ppcApoio || 2);
+  const modo = v('ep-ppcmodo'), ppc = modo !== 'proprio', mudouModo = modo !== eePPCModo(ee), jan = [v('ep-pi'), v('ep-pf'), +v('ep-pa')], mudouJan = jan[0] !== eePPCJan(ee).ini || jan[1] !== eePPCJan(ee).fim || jan[2] !== (ee.ppcApoio || 2);
   ee.ppcIni = jan[0] || ''; ee.ppcFim = jan[1] || ''; ee.ppcApoio = jan[2] || 2;
+  if (ppc && mudouModo && ee.ppcIntegrado) { ee.ppcModo = modo; ee.ppcApoioIds = []; eeDistribuirPPC(ee); eeAplicarPPC(ee); toast('Modo do PPC alterado. Escala refeita.'); return; }
+  if (ppc) ee.ppcModo = modo;
   if (ppc && mudouJan && ee.ppcIntegrado) { ee.ppcApoioIds = []; eeDistribuirPPC(ee); eeAplicarPPC(ee); toast('PPC redistribuídos para a nova janela.'); return; }
-  if (ppc !== !!ee.ppcIntegrado) { ee.ppcIntegrado = ppc; if (ppc) { ee.ppcApoioIds = []; eeDistribuirPPC(ee); } eeAplicarPPC(ee); toast(ppc ? 'PPC integrado às equipes de área. Escala refeita.' : 'PPC voltou à escala própria. Escala refeita.'); return; }
+  if (ppc !== !!ee.ppcIntegrado) { ee.ppcIntegrado = ppc; if (ppc) { ee.ppcApoioIds = []; eeDistribuirPPC(ee); } eeAplicarPPC(ee); toast(ppc ? (modo === 'eco' ? 'PPC ECO montado; os demais PPC seguem a própria escala. Escala refeita.' : 'PPC integrado às equipes de área. Escala refeita.') : 'PPC voltou à escala própria. Escala refeita.'); return; }
   eeSalvar(ee, true); toast('Parâmetros salvos. Use "Montar automaticamente" para refazer os blocos.', 'warn');
 }
 function eeFormGuarda(gid) {
@@ -6006,7 +6041,7 @@ function eeGuardaSalvar(gid) {
   else if (r && window._eeLista[+r.value]) { const c = window._eeLista[+r.value]; if (c.comp.join() !== (d.comp || []).join() || c.gr !== d.grupo) { d.grupo = c.gr; d.comp = c.comp.slice(); d.fixo = true; } }
   closeModal(); eeSalvar(ee, true);
 }
-function eeGuardaAuto(gid) { const ee = eeAtual(), g = getGuarda(gid), d = ee.g[gid]; d.fixo = false; d.fora = false; const c = eeCands(ee, g, d.grupo || 'N')[0]; if (!d.grupo) d.grupo = 'N'; d.comp = c ? c.comp.slice() : []; closeModal(); eeSalvar(ee, true); }
+function eeGuardaAuto(gid) { const ee = eeAtual(), g = getGuarda(gid), d = ee.g[gid]; d.fixo = false; d.fora = false; if (!d.grupo) d.grupo = 'N'; const cb = eeCompDoBloco(ee, g, d.grupo), c = eeCands(ee, g, d.grupo)[0]; d.comp = cb || (c ? c.comp.slice() : []); closeModal(); eeSalvar(ee, true); }
 function eeFormPlantao(key) {
   const ee = eeAtual(), x = eeRuaDados(ee).find(s => s.key === key); if (!x) return;
   const usado = new Set((ee.cob || []).filter(c => c.k === x.k && c.g).map(c => c.g)), pool = eePool(ee).filter(p => eeBase(p, x.k) === 'D' && !eeComp(ee, p, x.k) && !eeAus(p, x.k) && !usado.has(p.id));
@@ -6095,7 +6130,7 @@ async function eeImportarPlano() {
 }
 function eeProximo() {
   const ee = eeAtual(), n = eeCriar(ee.ano + 1); state.guardas.forEach(g => { const d = ee.g[g.id]; if (d && d.grupo && n.g[g.id]) n.g[g.id].h = d.grupo; });
-  state.escalasEspeciais.push(n); eeRecalc(n, true); eeSel = n.id; eeTab = 'resumo'; auditar('Escala especial', n.nome, 'criou a partir de ' + ee.nome); save(); render(); toast(`Criada a escala de ${n.ano}, com ${ee.ano} como histórico`);
+  ['ppcIntegrado', 'ppcModo', 'ppcApoio'].forEach(k => { if (ee[k] !== undefined) n[k] = ee[k]; }); state.escalasEspeciais.push(n); eeSel = n.id; if (n.ppcIntegrado) eeDistribuirPPC(n); _eeMemo = {}; eeRecalc(n, true); eeTab = 'resumo'; auditar('Escala especial', n.nome, 'criou a partir de ' + ee.nome); save(); render(); toast(`Criada a escala de ${n.ano}, com ${ee.ano} como histórico`);
 }
 /* ---------- PDF (documento em paisagem) ---------- */
 const DOC_CSS_EE = `
@@ -6160,7 +6195,7 @@ function eeFolhaHTML(ee) {
   const rs = eeResumo(ee);
   const sec = k => !(ee.secoes && ee.secoes[k] === false);
   return `${cabecalhoOficial('ESCALA ESPECIAL — ' + ee.nome.toUpperCase(), `${br(ee.inicio)} a ${br(ee.fim)}`, `Dias de trabalho e de compensação durante a semana especial · emitida em ${br(new Date())}`)}
-    ${sec('regra') ? `<div class="ee-regra"><b>Regra:</b> cada guarda compensa <b>3 plantões seguidos</b> do seu ciclo (<b>4</b> para vigias e defesa civil, de ciclo 2x2); com os dias normais de folga, a folga contínua cobre o <b>Natal (${ee.natal.dias.map(sh).join(' e ')})</b> ou o <b>Ano Novo (${ee.anoNovo.dias.map(sh).join(' e ')})</b>, e quem está de folga não trabalha no feriado do seu grupo. Cada equipe se divide ao meio (metade no Natal, metade no Ano Novo), alternando em relação a ${ee.anoAnt}. O expediente folga de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}. As equipes de rua fecham no mínimo <b>${ee.minimo.agentes} agentes + supervisor</b>, dia e noite, completando com o PPC (jornada trocada) e, se faltar, com extra.${rs.pend ? ` <b style="color:#b3261e">Pendências: ${rs.pend} plantão(ões) de rua ainda precisam de cobertura.</b>` : ''}</div>
+    ${sec('regra') ? `<div class="ee-regra"><b>Regra:</b> cada equipe se divide ao meio; a metade do Natal compensa <b>3 plantões seguidos</b> da equipe (<b>4</b> para vigias e defesa civil, de ciclo 2x2) e a do Ano Novo compensa os plantões seguintes, sem intervalo nem sobreposição, e todos da mesma metade folgam nas mesmas datas; com os dias normais de folga, a folga contínua cobre o <b>Natal (${ee.natal.dias.map(sh).join(' e ')})</b> ou o <b>Ano Novo (${ee.anoNovo.dias.map(sh).join(' e ')})</b>, e quem está de folga não trabalha no feriado do seu grupo. Cada equipe se divide ao meio (metade no Natal, metade no Ano Novo), alternando em relação a ${ee.anoAnt}. O expediente folga de ${sh(ee.expediente.inicio)} a ${sh(ee.expediente.fim)}. As equipes de rua fecham no mínimo <b>${ee.minimo.agentes} agentes + supervisor</b>, dia e noite, completando com o PPC (de dia, reforço; à noite, o PPC no 2º dia troca o diurno pela noite) e, se faltar, com extra.${rs.pend ? ` <b style="color:#b3261e">Pendências: ${rs.pend} plantão(ões) de rua ainda precisam de cobertura.</b>` : ''}</div>
     <div class="ee-leg">${leg.map(([c, t]) => `<span><span class="c" style="background:${EE_CEL[cor[c]][0]};color:${EE_CEL[cor[c]][1]}">${c}</span>${t}</span>`).join('')}<span><span class="c" style="background:#b3261e;color:#fff">dia</span>feriado do recesso</span></div>` : ''}
     ${sec('trocas') && ee.ppcIntegrado && eePPCTrocas(ee).length ? `<div class="ee-sec"><h3>Trocas de equipe — PPC integrado às equipes de área</h3><table class="ee-q"><thead><tr><th>Guarda</th><th>De → Para</th><th>Último plantão na origem</th><th>Folga de transição</th><th>1º plantão na nova</th><th>Último na nova</th><th>Folga de retorno</th><th>Volta à origem</th></tr></thead><tbody>${eePPCTrocas(ee).map(x => { const F = eeFichaDados(ee, x.g), per = l => l.length ? sh(l[0]) + (l.length > 1 ? ' a ' + sh(l[l.length - 1]) : '') : '—', d = k => k ? sh(k) : '—'; return `<tr><td><b>${esc(eeNome(x.g))}</b>${x.apoio ? ' <small>(apoio)</small>' : ''}</td><td>${esc(x.orig)} → ${esc(x.dest)}</td><td>${d(F.ultOrig)}</td><td>${per(F.transicao)}</td><td>${d(F.prim)}</td><td>${d(F.ultNova)}</td><td>${per(F.retorno)}</td><td>${d(F.volta)}</td></tr>`; }).join('')}</tbody></table><p style="font-size:9px;margin-top:3px">Fora das datas de cada troca, todos seguem a escala normal da própria equipe.</p></div>` : ''}${sec('equipes') ? tabelas : ''}${sec('central') && eeCentralGs(ee).length ? `<div class="ee-sec"><h3>Central de Monitoramento — em serviço por turno (mínimo 1)</h3><table class="ee-q"><thead><tr><th>Data</th><th>Diurno</th><th>Noturno</th><th>Presentes</th></tr></thead><tbody>${eeDias(ee).map(k => { const C = eeCentral(ee), d = C.find(x => x.k === k && x.t === 'D'), n = C.find(x => x.k === k && x.t === 'N'), v = x => x.esc.length ? (x.falta ? '<span class="ee-vm">0 — SEM NINGUÉM</span>' : x.pres.length + '/' + x.esc.length) : '—'; return `<tr${d.falta || n.falta ? ' class="ee-pd"' : ''}><td>${eeDia(k)}</td><td>${v(d)}</td><td>${v(n)}</td><td>${esc([...d.pres, ...n.pres].map(eeNome).join(', '))}</td></tr>`; }).join('')}</tbody></table></div>` : ''}${sec('supervisores') ? supQ : ''}${sec('plantoes') ? quadro : ''}${sec('romu') ? motoQ : ''}${sec('assinatura') ? assinaturaHTML('Pinhais, ' + dataExtenso(new Date())) : ''}`;
 }
