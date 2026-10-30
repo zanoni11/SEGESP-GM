@@ -3,7 +3,7 @@
 ## Como usar
 
 1. **Cadastros → Guardas →** abra a ficha do guarda, mude a **Equipe** e salve.
-2. O sistema abre a janela **Transferir**: informe até que dia ele trabalha na equipe atual (ex.: 30/10) e, se quiser, a folga mínima (padrão 3 dias), a data de apresentação e o motivo ou ato.
+2. O sistema abre a janela **Transferir**: informe o último dia em que ele trabalha na equipe atual (ex.: 31/10; o campo começa vazio e a prévia mostra a escala da equipe em volta do dia) e, se quiser, a folga mínima (padrão 3 dias), a data de apresentação e o motivo ou ato.
 3. A prévia mostra: ① o último plantão real na equipe de origem; ② a folga de transição; ③ o dia em que ele se apresenta na equipe nova. Confirme em **Registrar transferência**.
 
 ## Regra do cálculo
