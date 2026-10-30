@@ -21,12 +21,16 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
     const H = (d, n) => ({ D: { agente: d, supervisor: d }, N: { agente: n, supervisor: n } });
     const s = { instituicao: 'Teste', equipes: [], guardas: [], ancorasHist: [],
       ciclos: [{ id: 'c1', nome: '12x24x12x72', sequencia: ['D', 'N', 'F', 'F', 'F'], horarios: H(['07:00', '19:00'], ['19:00', '07:00']) }, { id: 'c4', nome: '12x12x12x84', sequencia: ['D', 'D', 'F', 'F', 'F'], horarios: H(['07:00', '19:00'], ['19:00', '07:00']) }] };
-    [['e1', 'ALFA', 'c1', 'Operacional', '2026-10-01'], ['e2', 'DELTA', 'c1', 'Operacional', '2026-10-03'], ['e3', 'ROMU 1', 'c4', 'ROMU', '2026-10-02'], ['e4', 'FOXTROT', 'c1', 'Operacional', '2026-10-01']].forEach(([id, nome, cicloId, grupo, anc]) => { s.equipes.push({ id, nome, cicloId, grupo, exigeSupervisor: false, efetivoMinimo: 2 }); s.ancorasHist.push({ equipeId: id, data: anc, vigencia: '0000-01-01' }); });
+    [['e1', 'ALFA', 'c1', 'Operacional', '2026-10-01'], ['e2', 'DELTA', 'c1', 'Operacional', '2026-10-03'], ['e3', 'ROMU 1', 'c4', 'ROMU', '2026-10-02'], ['e4', 'FOXTROT', 'c1', 'Operacional', '2026-10-01'], ['e5', 'BRAVO PPC', 'c4', 'PPC', '2026-10-30']].forEach(([id, nome, cicloId, grupo, anc]) => { s.equipes.push({ id, nome, cicloId, grupo, exigeSupervisor: false, efetivoMinimo: 2 }); s.ancorasHist.push({ equipeId: id, data: anc, vigencia: '0000-01-01' }); });
     let n = 0; ['e1', 'e2', 'e3'].forEach(e => { for (let i = 0; i < 3; i++) { n++; s.guardas.push({ id: 'g' + n, nomeCompleto: 'GUARDA TESTE ' + String(n).padStart(3, '0'), nomeGuerra: 'TESTE' + n, matricula: String(n).padStart(3, '0'), funcao: 'agente', equipeId: e }); } });
     state = normalizarEstado(s); _perfilSb = { id: 'u1', nome: 'Teste', login: 'teste', perfil: 'ADMINISTRADOR', ativo: true }; _appPronta = true; _sync.pronto = false;
     const out = {}, g = state.guardas[0], A = g.equipeId, B = 'e2';
     const telas = () => { const e = []; ['hoje', 'semana', 'mes', 'guarda', 'equipe', 'efetivo', 'superv', 'ipm', 'especial', 'cadastros'].forEach(v => { try { go(v); } catch (x) { e.push(v + ': ' + x.message); } }); go('hoje'); return e; };
     out.telasAntes = telas();
+    { const gp = { id: 'gp', nomeCompleto: 'GUARDA PPC TESTE', nomeGuerra: 'RODRIGUES', matricula: '900', funcao: 'agente', equipeId: 'e5' }; state.guardas.push(gp); const p31 = trPlano('e5', 'e2', '2026-10-31', 3), p30 = trPlano('e5', 'e2', '2026-10-30', 3);
+      out.dia31 = p31.ult === '2026-10-31' && p30.ult === '2026-10-30' && p31.apr >= '2026-11-04'; go('cadastros'); abrirTransferencia('gp', 'e2'); out.campoVazio = $('tr-ate').value === ''; $('tr-ate').value = '2026-10-31'; trPrev('gp'); out.previaPerto = /em volta do dia informado/.test($('tr-prev').innerText); trConfirmar('gp');
+      out.nota = editalHTML(2026, 9).includes('BRAVO PPC até 31/10') && /DELTA a partir de/.test(editalHTML(2026, 9)); const tt = state.transferencias.find(x => x.guardaId === 'gp'); out.trabalha31 = statusGuarda(state.guardas.find(x => x.id === 'gp'), parseISO('2026-10-31')).trabalha === true && statusGuarda(state.guardas.find(x => x.id === 'gp'), parseISO('2026-10-31')).transicao.fase === 'ultimo';
+      state.transferencias = state.transferencias.filter(x => x !== tt); state.guardas.find(x => x.id === 'gp').equipeId = 'e5'; _trMemo = { ref: null, n: -1, mapa: {} }; }
     const dia = (k, n) => iso(addDays(parseISO(k), n)), cods = (a, b) => { const o = []; for (let k = a; k <= b; k = dia(k, 1)) o.push(k + ':' + statusGuarda(g, parseISO(k)).codigo); return o.join(','); };
     const antes = cods('2026-09-01', '2026-10-31');
     let curto = null, longo = null;
@@ -54,6 +58,8 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
     formGuarda(g.id); out.hist = /Histórico de equipe/.test(document.getElementById('m-body').innerText); closeModal(); trCancelar(t.id); const f = _confirmFn; _confirmFn = null; closeModal(); f && f();
     out.cancelou = state.transferencias.length === 0 && g.equipeId === A && cods('2026-09-01', '2026-12-31').indexOf('TR') < 0;
     return out; });
+  ok(r.dia31 && r.campoVazio && r.previaPerto, 'o último dia informado (31/10) vale; o campo começa vazio e a prévia mostra a escala em volta', r);
+  ok(r.trabalha31 && r.nota, 'o guarda trabalha o dia 31/10 na equipe de origem e o edital diz "até 31/10; ... a partir de"', r);
   ok(r.telasAntes.length === 0, 'as telas principais abrem sem erro', r.telasAntes);
   ok(r.curto && r.curto.ok, 'folga curta até a escala nova: cumpre os 3 dias e se apresenta na primeira escala possível', r.curto);
   ok(r.longo && r.longo.ok, 'folga longa: se apresenta na própria escala da equipe nova, sem esperar mais', r.longo);
