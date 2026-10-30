@@ -44,6 +44,7 @@
   .he-linha .sticky-col { background: #fff1f2 !important; }
   .he-tag { font-size: 9px; line-height: 1; font-weight: 700; color: #be123c; margin-top: 1px; white-space: nowrap; }
   .st-fer { background: #ede9fe; color: #5b21b6; font-size: 10px; }
+  .st-tr { background: #fef3c7; color: #92400e; font-size: 10px; }
   .st-at { background: #ffe4e6; color: #9f1239; font-size: 10px; }
   .st-af { background: #e2e8f0; color: #0f172a; font-size: 10px; }
   .st-ds { background: #cffafe; color: #155e75; font-size: 10px; }
@@ -154,7 +155,7 @@
     .print-grid { font-size: 7px; width: 100%; }
     .print-grid th, .print-grid td { padding: 1px !important; min-width: 0 !important; }
     .print-title { display: block !important; }
-    .shift-D, .shift-N, .shift-F, .shift-EV, .he-cell, .he-tag, .ev-cell, .ev-tag, .he-linha td, .st-fer, .st-at, .st-af, .st-ds, .tr-cell, .tr-tag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .shift-D, .shift-N, .shift-F, .shift-EV, .he-cell, .he-tag, .ev-cell, .ev-tag, .he-linha td, .st-fer, .st-tr, .st-at, .st-af, .st-ds, .tr-cell, .tr-tag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>
@@ -213,7 +214,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.10.18.2';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.10.30.1';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
@@ -289,6 +290,10 @@ function normalizarEstado(s) {
     if (g.equipeId && !ids.has(g.equipeId)) g.equipeId = null;
     g.nomeGuerra = g.nomeGuerra || ''; g.matricula = String(g.matricula || ''); g.nomeEdital = String(g.nomeEdital || '');
   });
+  { const gids = new Set(s.guardas.map(g => g.id)), vistos = new Set(), dt = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ''));   // transferências de equipe (histórico por data)
+    s.transferencias = (Array.isArray(s.transferencias) ? s.transferencias : []).filter(t => t && gids.has(t.guardaId) && ids.has(t.deId) && ids.has(t.paraId) && dt(t.ultimo) && dt(t.apresentacao) && t.apresentacao > t.ultimo)
+      .map(t => ({ id: String(t.id || uid('tr_')), guardaId: t.guardaId, deId: t.deId, paraId: t.paraId, ultimo: t.ultimo, apresentacao: t.apresentacao, folgaMin: Math.max(0, parseInt(t.folgaMin, 10) || 0), motivo: String(t.motivo || ''), por: String(t.por || ''), em: String(t.em || '') }))
+      .filter(t => !vistos.has(t.id) && vistos.add(t.id)); }
   // Ciclos: pausa não trabalhada por turno e folga em feriados (opcionais); feriados globais
   s.ciclos.forEach(c => {
     c.folgaNosFeriados = !!c.folgaNosFeriados;
@@ -437,12 +442,12 @@ const TABS = [
     nulos: ['supervisor_id', 'data_hora_abertura', 'data_hora_fechamento'], refs: { supervisor_id: 'guardas' } },
   { t: 'comunicacoes', k: 'comunicacoes', ord: 1, cols: ['id', 'ano', 'seq', 'numero', 'data', 'assunto', 'destinatario_id', 'corpo', 'assinatura', 'status', 'supervisao_id', 'criado_por', 'criado_em', 'historico'], nulos: ['data', 'criado_em'] },
   { t: 'configuracoes', tipo: 'cfg' },        // linha única (id = 1): instituição, feriados, regras, assinatura, logos, cabeçalho
-  { t: 'config_modulos', tipo: 'mod' },       // uma linha por módulo (ipm, superv_cfg, requal, boletins, limites_extras)
+  { t: 'config_modulos', tipo: 'mod' },       // uma linha por módulo (ipm, superv_cfg, requal, boletins, limites_extras, transferencias)
   { t: 'usuarios', k: 'usuarios', cols: ['id', 'nome', 'matricula', 'login', 'perfil', 'setor', 'ativo'], nulos: ['matricula', 'setor'] },
   { t: 'auditoria', k: 'auditoria', soInserir: true, cols: ['id', 'em', 'por', 'user_id', 'entidade', 'ref', 'acao', 'detalhe'], nulos: ['user_id'],
     pos: r => { if (!UUID_RE.test(String(r.user_id || ''))) r.user_id = null; } },
 ];
-const MODULOS = { ipm: 'ipm', supervCfg: 'superv_cfg', requal: 'requal', boletins: 'boletins', limitesExtras: 'limites_extras' };   // chave no state → id em config_modulos
+const MODULOS = { ipm: 'ipm', supervCfg: 'superv_cfg', requal: 'requal', boletins: 'boletins', limitesExtras: 'limites_extras', transferencias: 'transferencias' };   // chave no state → id em config_modulos
 const ROTULO_TABELA = { ciclos: 'Ciclos', funcoes: 'Funções', equipes: 'Equipes', guardas: 'Guardas', ancoras: 'Âncoras de ciclo', horas_extras: 'Horas extras', ausencias: 'Afastamentos', trocas: 'Trocas de escala', trocas_jornada: 'Trocas de jornada', atividades: 'Atividades de requalificação', escalas_especiais: 'Escalas especiais', supervisoes: 'Supervisões', comunicacoes: 'Comunicações internas', frota: 'Viaturas', setores: 'Setores', pontos_cp: 'Pontos do cartão programa', tipos_bo: 'Tipos de B.O.', tipos_ra: 'Tipos de R.A.', tipos_vtr: 'Tipos de viatura', destinatarios_ci: 'Destinatários de C.I.', configuracoes: 'Configurações gerais', config_modulos: 'Ajustes de módulos', usuarios: 'Usuários', auditoria: 'Auditoria' };
 
 // Quem pode escrever em cada tabela. Espelha supabase/rls_perfis.sql e migracao_002.sql: o servidor é quem decide de verdade;
@@ -777,10 +782,47 @@ async function copiarTexto(texto) {
 const getCiclo = id => state.ciclos.find(c => c.id === id);
 const getEquipe = id => state.equipes.find(e => e.id === id);
 const getGuarda = id => state.guardas.find(g => g.id === id);
-const membros = eqId => state.guardas.filter(g => g.equipeId === eqId);
-const supervisores = eqId => membros(eqId).filter(g => g.funcao === 'supervisor');
+/* ---------- TRANSFERÊNCIAS DE EQUIPE: a equipe do guarda depende da data ----------
+   state.transferencias (gravada em config_modulos, id 'transferencias') guarda, por guarda: a equipe de origem (deId), o último
+   plantão trabalhado nela (ultimo), a equipe nova (paraId) e o dia da apresentação (apresentacao). g.equipeId passa a ser a equipe NOVA.
+   Até o último plantão vale a equipe de origem (a escala anterior não muda); entre o último plantão e a apresentação o guarda está
+   em transição (folga); da apresentação em diante vale a equipe nova. */
+const TR_FOLGA_MIN = 3;
+const TRANSICAO = '~';
+let _trMemo = { ref: null, n: -1, mapa: {} };
+function transfsDe(gid) {
+  const arr = state.transferencias || [];
+  if (_trMemo.ref !== arr || _trMemo.n !== arr.length) {
+    const m = {}; arr.forEach(t => { (m[t.guardaId] = m[t.guardaId] || []).push(t); });
+    Object.keys(m).forEach(k => m[k].sort((a, b) => a.ultimo < b.ultimo ? -1 : a.ultimo > b.ultimo ? 1 : 0)); _trMemo = { ref: arr, n: arr.length, mapa: m };
+  }
+  return _trMemo.mapa[gid] || [];
+}
+function equipeEm(g, k) {                         // id da equipe do guarda na data k (aaaa-mm-dd); TRANSICAO entre o último plantão e a apresentação
+  const L = transfsDe(g.id); if (!L.length) return g.equipeId;
+  for (const t of L) { if (k <= t.ultimo) return t.deId; if (k < t.apresentacao) return TRANSICAO; }
+  return g.equipeId;
+}
+function transicaoDoDia(g, k) {                   // marca para a escala: último plantão, dias de transição e apresentação
+  for (const t of transfsDe(g.id)) { if (k === t.ultimo) return { fase: 'ultimo', t }; if (k > t.ultimo && k < t.apresentacao) return { fase: 'folga', t }; if (k === t.apresentacao) return { fase: 'apresenta', t }; }
+  return null;
+}
+const membros = (eqId, date) => date ? state.guardas.filter(g => equipeEm(g, iso(date)) === eqId) : state.guardas.filter(g => g.equipeId === eqId);
+const supervisores = (eqId, date) => membros(eqId, date).filter(g => g.funcao === 'supervisor');
 // 'agentes' = membros que não são supervisor (inclui funções cadastradas pelo usuário)
-const agentes = eqId => membros(eqId).filter(g => g.funcao !== 'supervisor');
+const agentes = (eqId, date) => membros(eqId, date).filter(g => g.funcao !== 'supervisor');
+function membrosNoPeriodo(eqId, ini, fim) {       // quem pertenceu à equipe em algum dia do período (para edital e IPM do mês)
+  return state.guardas.filter(g => {
+    if (!transfsDe(g.id).length) return g.equipeId === eqId;
+    for (let k = ini; k <= fim; k = iso(addDays(parseISO(k), 1))) if (equipeEm(g, k) === eqId) return true;
+    return false;
+  });
+}
+function notaTransf(g, ini, fim) {                // " (Alfa até 28/10; Delta desde 05/11)" para o edital
+  const t = transfsDe(g.id).find(x => (x.ultimo >= ini && x.ultimo <= fim) || (x.apresentacao >= ini && x.apresentacao <= fim)); if (!t) return '';
+  const n = id => (getEquipe(id) || {}).nome || '?', d = k => brCurto(parseISO(k));
+  return ` (${n(t.deId)} até ${d(t.ultimo)}; ${n(t.paraId)} desde ${d(t.apresentacao)})`;
+}
 const nomeCurto = g => isMobile() ? (g.nomeGuerra || g.nomeCompleto) : g.nomeCompleto;
 const historico = eqId => state.ancorasHist.filter(a => a.equipeId === eqId).sort((a, b) => a.vigencia < b.vigencia ? -1 : 1);
 
@@ -814,7 +856,7 @@ function turno(eqId, date) {
   if (t !== 'F' && ciclo.folgaNosFeriados && ehFeriado(date)) return 'F';
   return t;
 }
-function turnoGuarda(g, date) { return g.equipeId ? turno(g.equipeId, date) : null; }
+function turnoGuarda(g, date) { const e = equipeEm(g, iso(date)); if (e === TRANSICAO) return 'F'; return e ? turno(e, date) : null; }
 
 // Busca horário próprio da função (ciclo.horarios[t][idDaFuncao]); se não houver, usa o do Agente.
 function horario(ciclo, t, funcao) { return ciclo?.horarios?.[t]?.[funcao] || ciclo?.horarios?.[t]?.agente || null; }
@@ -1160,7 +1202,7 @@ function viewSemana() {
         <td class="sticky-col p-2 border-b border-r border-slate-200 font-medium whitespace-nowrap" ${eqBorda(semanaPorGuarda ? l.equipeId : l.id)}>${semanaPorGuarda ? esc(nomeCurto(l)) : eqTag(l)}${semanaPorGuarda && !l.equipeId ? ' <span class="text-slate-400 font-normal">(sem equipe)</span>' : ''}</td>
         ${dias.map(d => { const st = semanaPorGuarda ? statusGuarda(l, d) : null, t = semanaPorGuarda ? codigoVisual(st) : turno(l.id, d);
           const ex = semanaPorGuarda ? extrasDoGuardaNoDia(l, d) : [], nEq = semanaPorGuarda ? 0 : extrasEquipeNoDia(l.id, d);
-          const tag = semanaPorGuarda ? tagHE(ex) : (nEq ? `<div class="he-tag">HE ×${nEq}</div>` : '');
+          const tag = semanaPorGuarda ? tagHE(ex) + tagTR(st) : (nEq ? `<div class="he-tag">HE ×${nEq}</div>` : '');
           const tit = [st ? tituloDia(st) : '', ex.length ? tituloHE(ex) : ''].filter(Boolean).join(' | ');
           return `<td class="p-1 border-b border-slate-100 text-center font-semibold ${classeCodigo(t)} ${ex.length || nEq ? 'he-cell' : ''} ${st && (st.troca || st.tj) ? 'tr-cell' : ''}" ${tit ? `title="${esc(tit)}"` : ''}>${t || ''}${st && st.troca ? '<div class="tr-tag">troca</div>' : st && st.tj ? '<div class="tr-tag">TJ</div>' : ''}${tag}</td>`; }).join('')}
       </tr>`).join('')}</tbody></table></div>`;
@@ -1230,7 +1272,7 @@ function viewMes() {
         <tr><td class="sticky-col p-1.5 font-bold border-b border-r border-slate-200 ${corEq(gr.k) ? '' : '!bg-slate-50'} whitespace-nowrap" ${corEq(gr.k) ? `style="background:${corEq(gr.k)};color:${ipmContraste(corEq(gr.k))}"` : ''}>${esc(gr.nome)}</td><td colspan="${n + 1}" class="${corEq(gr.k) ? '' : 'bg-slate-50'} border-b border-slate-200" ${corEq(gr.k) ? `style="background:${corEq(gr.k)}"` : ''}></td></tr>
         ${gr.gs.map(g => `<tr>
           <td class="sticky-col p-1.5 border-b border-r border-slate-200 whitespace-nowrap max-w-[120px] md:max-w-none truncate">${g.funcao === 'supervisor' ? '★ ' : ''}${esc(nomeCurto(g))}</td>
-          ${dias.map(d => { const st = statusGuarda(g, d), t = codigoVisual(st), ex = extrasDoGuardaNoDia(g, d); const tit = [tituloDia(st), ex.length ? tituloHE(ex) : ''].filter(Boolean).join(' | '); return `<td class="p-0.5 border-b border-slate-100 text-center font-semibold cell ${classeCodigo(t)} ${ex.length ? 'he-cell' : ''} ${st.atividades && st.atividades.length ? 'ev-cell' : ''} ${st.troca || st.tj ? 'tr-cell' : ''}" ${tit ? `title="${esc(tit)}"` : ''}>${t}${st.troca ? '<div class="tr-tag">troca</div>' : st.tj ? '<div class="tr-tag">TJ</div>' : ''}${tagHE(ex)}${tagCUR(st)}</td>`; }).join('')}
+          ${dias.map(d => { const st = statusGuarda(g, d), t = codigoVisual(st), ex = extrasDoGuardaNoDia(g, d); const tit = [tituloDia(st), ex.length ? tituloHE(ex) : ''].filter(Boolean).join(' | '); return `<td class="p-0.5 border-b border-slate-100 text-center font-semibold cell ${classeCodigo(t)} ${ex.length ? 'he-cell' : ''} ${st.atividades && st.atividades.length ? 'ev-cell' : ''} ${st.troca || st.tj ? 'tr-cell' : ''}" ${tit ? `title="${esc(tit)}"` : ''}>${t}${st.troca ? '<div class="tr-tag">troca</div>' : st.tj ? '<div class="tr-tag">TJ</div>' : ''}${tagHE(ex)}${tagCUR(st)}${tagTR(st)}</td>`; }).join('')}
           <td class="p-0.5 border-b border-slate-100 text-center font-bold text-rose-700 text-[10px]">${(v => v ? fmtHoras(v) : '')(horasExtrasGuardaMes(g, ymDe(iso(mesSel))))}</td>
         </tr>`).join('')}
         ${linhaHEGrupo(gr, dias)}`).join('')}</tbody></table></div>
@@ -1414,7 +1456,8 @@ function confirmarSeletor() {
   };
   if (transf.length) {
     openModal('Transferência de equipe', `<p class="text-sm text-slate-700 mb-2">Estes guardas serão transferidos para <b>${esc(eq.nome)}</b>:</p>
-      <ul class="text-sm space-y-1">${transf.map(g => `<li>• ${esc(g.nomeGuerra || g.nomeCompleto)} <span class="text-slate-500">(sai de ${esc(getEquipe(g.equipeId).nome)})</span></li>`).join('')}</ul>`,
+      <ul class="text-sm space-y-1">${transf.map(g => `<li>• ${esc(g.nomeGuerra || g.nomeCompleto)} <span class="text-slate-500">(sai de ${esc(getEquipe(g.equipeId).nome)})</span></li>`).join('')}</ul>
+      <p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2">Atenção: aqui a mudança vale para <b>todas as datas</b> (serve para corrigir um cadastro errado). Para trocar de equipe <b>sem alterar a escala anterior</b>, abra a ficha do guarda, mude a Equipe e salve: o sistema registra o último plantão, a folga e a apresentação.</p>`,
       `<div class="flex gap-2 justify-end"><button onclick="abrirSeletor('${eq.id}',true)" class="${BTN_G}">Voltar</button><button id="tr-ok" class="${BTN_P}">Transferir</button></div>`);
     $('tr-ok').onclick = passoSup;
   } else passoSup();
@@ -1553,7 +1596,8 @@ function formGuarda(id, ctx = null) {
       <div><label class="block text-sm font-medium mb-1">Função</label><select id="g-func" class="${INPUT}">
         ${funcaoOpts(g.funcao)}</select></div>
       <div><label class="block text-sm font-medium mb-1">Equipe</label><select id="g-eq" class="${INPUT}"><option value="">Sem equipe</option>
-        ${state.equipes.map(e => `<option value="${e.id}" ${e.id === g.equipeId ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div>
+        ${state.equipes.map(e => `<option value="${e.id}" ${e.id === g.equipeId ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select>${id ? '<div class="text-[11px] text-slate-500 mt-1">Ao trocar a equipe, o sistema pede o último dia na equipe atual e calcula a folga e a apresentação.</div>' : ''}</div>
+      ${id ? trHistoricoHTML(id) : ''}
     </div>`,
     `<div class="flex gap-2">
       ${id ? `<button onclick="excluirGuarda('${id}')" class="${BTN} text-red-600 border border-red-200">Excluir</button>` : ''}
@@ -1575,8 +1619,8 @@ function salvarGuarda(id) {
     closeModal(); render(); toast('Guarda salvo');
     if (dados.equipeId) { const p = problemasEquipe(dados.equipeId); if (p.some(x => x.includes('supervisores'))) setTimeout(() => toast(`${getEquipe(dados.equipeId).nome}: ${p.join(', ')}`, 'warn'), 300); }
   };
-  if (id && antesEq && dados.equipeId && antesEq !== dados.equipeId) {
-    confirmar('Transferir de equipe', `<p><b>${esc(dados.nomeCompleto)}</b> sai de <b>${esc(getEquipe(antesEq).nome)}</b> e vai para <b>${esc(getEquipe(dados.equipeId).nome)}</b>.</p>`, executar, 'Transferir');
+  if (id && antesEq && dados.equipeId && antesEq !== dados.equipeId) {   // a troca de equipe passa pelo registro de transferência: a escala anterior não muda
+    const destino = dados.equipeId; dados.equipeId = antesEq; Object.assign(g, dados); save(); closeModal(); render(); abrirTransferencia(id, destino);
   } else executar();
 }
 function excluirGuarda(id) {
@@ -2422,12 +2466,12 @@ function tituloHE(ex) { return ex.map(h => `HE ${h.inicio}–${h.fim} (${fmtHora
 function tagExtraTexto(g, d) { const ex = extrasDoGuardaNoDia(g, d); return ex.length ? `HE ${fmtHoras(ex.reduce((s, h) => s + h.horas, 0))}h` : null; }
 function extrasEquipeNoDia(eqId, d) {
   const k = iso(d); let n = 0;
-  state.horasExtras.forEach(h => { if (h.data === k) h.escalados.forEach(e => { const g = getGuarda(e.guardaId); if (g && g.equipeId === eqId) n++; }); });
+  state.horasExtras.forEach(h => { if (h.data === k) h.escalados.forEach(e => { const g = getGuarda(e.guardaId); if (g && equipeEm(g, k) === eqId) n++; }); });
   return n;
 }
 function extrasEquipeMes(eqId, ym) {
   let horas = 0, escalas = 0;
-  state.horasExtras.forEach(h => { if (ymDe(h.data) !== ym) return; h.escalados.forEach(e => { const g = getGuarda(e.guardaId); if (g && g.equipeId === eqId) { horas += h.horas; escalas++; } }); });
+  state.horasExtras.forEach(h => { if (ymDe(h.data) !== ym) return; h.escalados.forEach(e => { const g = getGuarda(e.guardaId); if (g && equipeEm(g, h.data) === eqId) { horas += h.horas; escalas++; } }); });
   return { horas: round2(horas), escalas };
 }
 function extrasGuardaMes(gid, ym) {
@@ -2475,7 +2519,7 @@ const AUS_TIPOS = {
   dispensa:    { nome: 'Dispensa de serviço', cod: 'DS',  cls: 'st-ds'  },
 };
 const AUS_ORDEM = ['afastamento', 'ferias', 'atestado', 'dispensa']; // prioridade quando se sobrepõem
-const CLS_CODIGO = { D: 'shift-D', N: 'shift-N', F: 'shift-F', 'FÉR': 'st-fer', AT: 'st-at', AF: 'st-af', DS: 'st-ds', CUR: 'shift-EV', EV: 'shift-EV' };
+const CLS_CODIGO = { D: 'shift-D', N: 'shift-N', F: 'shift-F', 'FÉR': 'st-fer', AT: 'st-at', AF: 'st-af', DS: 'st-ds', TR: 'st-tr', CUR: 'shift-EV', EV: 'shift-EV' };
 // quem está num curso/evento (fora do serviço de rua, ou de folga trabalhando nele) aparece como CUR/EV, e não como serviço ou folga
 const codigoVisual = st => (st.atividades && st.atividades.length && (st.atividade || !st.trabalha)) ? 'CUR' : (st.codigo || '');
 const tituloDia = st => { const a = tituloOcorrencia(st); return a && !/^Capacitação:/.test(a) && st.atividades && st.atividades.length ? `${a} | Capacitação: ${st.atividades.map(e => e.nome).join(', ')}${st.atividade ? ' (fora do efetivo de rua)' : ''}` : a; };
@@ -2529,7 +2573,7 @@ function jornadaDestinoTJ(t) {
 // plantão que o ciclo dá ao guarda no dia (ignora trocas e ausências)
 function jornadaBaseGuarda(g, date) {
   const t = turnoGuarda(g, date); if (t !== 'D' && t !== 'N') return null;
-  const eq = getEquipe(g.equipeId), ciclo = eq && getCiclo(eq.cicloId), h = ciclo && horario(ciclo, t, g.funcao);
+  const eq = getEquipe(equipeEm(g, iso(date))), ciclo = eq && getCiclo(eq.cicloId), h = ciclo && horario(ciclo, t, g.funcao);
   if (!h) return null;
   const ini = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, minutos(h[0])).getTime();
   return { ini, fim: ini + duracaoMin(h[0], h[1]) * 60000, turno: t, horario: h, ciclo, pausaMin: Number(ciclo.horarios && ciclo.horarios[t] && ciclo.horarios[t].pausaMin) || 0 };
@@ -2538,8 +2582,9 @@ function jornadaBaseGuarda(g, date) {
    ausência > troca (entrada/saída) > ciclo. */
 function statusGuardaBase(g, date) {
   const k = iso(date), base = turnoGuarda(g, date), aus = ausenciaDoDia(g.id, k);
-  const st = { data: k, base, turno: base || null, codigo: base || '', trabalha: false, ausencia: aus || null, troca: null, tj: null, horario: null, ciclo: null, pausaMin: 0 };
+  const st = { data: k, base, turno: base || null, codigo: base || '', trabalha: false, ausencia: aus || null, troca: null, tj: null, horario: null, ciclo: null, pausaMin: 0, transicao: transicaoDoDia(g, k) };
   if (aus) { st.turno = 'F'; st.codigo = AUS_TIPOS[aus.tipo].cod; return st; }
+  if (st.transicao && st.transicao.fase === 'folga') { st.turno = 'F'; st.codigo = 'TR'; return st; }   // entre o último plantão e a apresentação
   const tjd = tjDoDia(g, k);
   if (tjd.entrada) { // trabalha numa folga: cumpre o plantão do dia de origem
     const jo = jornadaDestinoTJ(tjd.entrada);
@@ -2555,7 +2600,7 @@ function statusGuardaBase(g, date) {
     const orig = getGuarda(entrada.de), jo = orig && jornadaBaseGuarda(orig, date);
     if (jo) {
       Object.assign(st, { turno: jo.turno, codigo: jo.turno, trabalha: true, horario: jo.horario, ciclo: jo.ciclo, pausaMin: jo.pausaMin });
-      st.troca = { papel: 'entrada', com: entrada.de, id: entrada.tr.id, origemEquipeId: orig.equipeId };
+      st.troca = { papel: 'entrada', com: entrada.de, id: entrada.tr.id, origemEquipeId: equipeEm(orig, k) };
       return st;
     }
   }
@@ -2571,6 +2616,10 @@ function horasDoDia(st) {
 }
 function horasNoturnasDoDia(st) { return st.trabalha && st.horario ? horasNoturnasHorario(st.horario) : 0; }
 function tituloOcorrencia(st) {
+  if (st.transicao && !st.ausencia) { const t = st.transicao.t, n = id => (getEquipe(id) || {}).nome || '?';
+    if (st.transicao.fase === 'folga') return `Transição de equipe: folga (${n(t.deId)} → ${n(t.paraId)}; apresenta-se em ${br(t.apresentacao)})`;
+    if (st.transicao.fase === 'ultimo') return `Último plantão na equipe ${n(t.deId)} (transferência para ${n(t.paraId)})`;
+    return `Apresenta-se na equipe ${n(t.paraId)} (vem de ${n(t.deId)})`; }
   if (st.ausencia) { const a = st.ausencia; return `${AUS_TIPOS[a.tipo].nome}: ${periodoTxt(a)}${a.obs ? ' — ' + a.obs : ''}`; }
   if (st.troca) return st.troca.papel === 'saida' ? `Troca: entregou o plantão a ${nomeG(st.troca.com)}` : `Troca: assume o plantão de ${nomeG(st.troca.com)}`;
   if (st.tj && st.tj.turnoNovo) return `Troca de jornada: muda de turno neste dia (${st.base} → ${st.tj.turnoNovo})`;
@@ -2586,7 +2635,7 @@ function msgConflito(nome, an) {
 /* Quem está de serviço numa equipe num dia, já com ausências e trocas */
 function equipeNoDia(eq, t, d) {
   const sups = [], ags = [], ausentes = [], subs = new Set();
-  membros(eq.id).forEach(g => {
+  membros(eq.id, d).forEach(g => {
     const st = statusGuarda(g, d);
     if (st.ausencia) { ausentes.push({ g, motivo: AUS_TIPOS[st.ausencia.tipo].nome }); return; }
     if (st.tj) { ausentes.push({ g, motivo: st.tj.papel === 'saida' ? `Troca de jornada (folga; trabalha em ${brCurto(parseISO(st.tj.ref))})` : 'Troca de jornada' }); return; }
@@ -2595,7 +2644,7 @@ function equipeNoDia(eq, t, d) {
     if (st.trabalha) (g.funcao === 'supervisor' ? sups : ags).push(g);
   });
   state.guardas.forEach(g => {
-    if (g.equipeId === eq.id) return;
+    if (equipeEm(g, iso(d)) === eq.id) return;
     const st = statusGuarda(g, d);
     if (st.troca && st.troca.papel === 'entrada' && st.troca.origemEquipeId === eq.id && st.turno === t && !st.atividade) { (g.funcao === 'supervisor' ? sups : ags).push(g); subs.add(g.id); }
   });
@@ -2621,6 +2670,76 @@ function blocoOcorrenciasDia(d) {
       <div class="text-sm mt-1">${lista.map(a => esc(nomeG(a.guardaId))).join(', ')}</div></div>`).join('')}
     ${trLinhas.length ? `<div class="pt-2"><span class="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-800">Trocas (${trLinhas.length})</span>${trLinhas.join('')}</div>` : ''}
     ${tjLinhas.length ? `<div class="pt-2"><span class="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">Trocas de jornada (${tjLinhas.length})</span>${tjLinhas.join('')}</div>` : ''}</div>`;
+}
+
+/* ---------- TRANSFERÊNCIA DE EQUIPE: registra a troca, calcula a folga e a apresentação ---------- */
+// último plantão trabalhado na equipe de origem até 'ate'; folga mínima; primeira escala possível da equipe de destino depois da folga
+function trPlano(deId, paraId, ate, folgaMin, manual) {
+  let ult = ate, achou = false;
+  for (let i = 0; i < 60; i++) { const t = turno(deId, parseISO(ult)); if (t === 'D' || t === 'N') { achou = true; break; } ult = iso(addDays(parseISO(ult), -1)); }
+  if (!achou) return { erro: 'A equipe de origem não tem plantão nos 60 dias até a data informada.' };
+  const minApr = iso(addDays(parseISO(ult), folgaMin + 1)); let apr = '', k = minApr;
+  for (let i = 0; i < 400; i++) { const t = turno(paraId, parseISO(k)); if (t === 'D' || t === 'N') { apr = k; break; } k = iso(addDays(parseISO(k), 1)); }
+  if (!apr) return { erro: 'A equipe de destino não tem plantão nos 400 dias seguintes (confira o ciclo e a âncora).' };
+  let aviso = '';
+  if (manual) { if (manual < minApr) return { erro: `A apresentação não pode ser antes de ${br(minApr)} (folga mínima de ${folgaMin} dia(s) depois do último plantão).` }; apr = manual; const t = turno(paraId, parseISO(manual)); if (t !== 'D' && t !== 'N') aviso = 'A equipe de destino não trabalha nesta data.'; }
+  const folga = []; for (let d = addDays(parseISO(ult), 1); iso(d) < apr; d = addDays(d, 1)) folga.push(iso(d));
+  return { ult, minApr, apr, folga, turnoUlt: turno(deId, parseISO(ult)), turnoApr: turno(paraId, parseISO(apr)), aviso, extra: folga.length - folgaMin };
+}
+function trLer() { return { para: $('tr-para').value, ate: $('tr-ate').value, folgaMin: Math.max(0, parseInt($('tr-folga').value, 10) || 0), apr: $('tr-apr').value, mot: $('tr-mot').value.trim() }; }
+function trPlanoDe(gid) {
+  const g = getGuarda(gid), v = trLer(); if (!g || !v.para || !v.ate) return { erro: 'Informe a nova equipe e o último dia de trabalho na equipe atual.' };
+  const ult = transfsDe(gid).slice(-1)[0], p = trPlano(g.equipeId, v.para, v.ate, v.folgaMin, v.apr);
+  if (!p.erro && ult && p.ult < ult.apresentacao) return { erro: `Já existe transferência com apresentação em ${br(ult.apresentacao)}; o último plantão da nova precisa ser a partir dessa data.` };
+  return p;
+}
+function abrirTransferencia(gid, destino) {
+  const g = getGuarda(gid); if (!g || !g.equipeId || !exigir('tela.cadastros')) return;
+  const outras = state.equipes.filter(e => e.id !== g.equipeId); if (!outras.length) { toast('Não há outra equipe cadastrada', 'warn'); return; }
+  openModal(`Transferir ${g.nomeGuerra || g.nomeCompleto}`, `<div class="space-y-3 text-sm">
+    <p class="text-xs text-slate-500">A escala <b>antes</b> da troca não muda: o guarda segue na equipe atual até o último plantão. Depois folga o mínimo exigido e se apresenta na primeira escala possível da equipe nova.</p>
+    <div class="grid grid-cols-2 gap-2"><div><label class="block text-xs text-slate-500 mb-1">Equipe atual</label><div class="${INPUT} flex items-center bg-slate-50">${esc(getEquipe(g.equipeId).nome)}</div></div>
+      <div><label class="block text-xs text-slate-500 mb-1" for="tr-para">Nova equipe</label><select id="tr-para" onchange="trPrev('${gid}')" class="${INPUT}">${outras.map(e => `<option value="${e.id}" ${e.id === destino ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}</select></div></div>
+    <div class="grid grid-cols-2 gap-2"><div><label class="block text-xs text-slate-500 mb-1" for="tr-ate">Trabalha na equipe atual até</label><input id="tr-ate" type="date" value="${iso(new Date())}" onchange="trPrev('${gid}')" class="${INPUT}"></div>
+      <div><label class="block text-xs text-slate-500 mb-1" for="tr-folga">Folga mínima (dias)</label><input id="tr-folga" type="number" min="0" value="${TR_FOLGA_MIN}" oninput="trPrev('${gid}')" class="${INPUT}"></div></div>
+    <div><label class="block text-xs text-slate-500 mb-1" for="tr-apr">Apresentação (opcional; vazio = primeira escala possível)</label><input id="tr-apr" type="date" onchange="trPrev('${gid}')" class="${INPUT}"></div>
+    <div><label class="block text-xs text-slate-500 mb-1" for="tr-mot">Motivo ou ato (portaria, ordem de serviço)</label><input id="tr-mot" class="${INPUT}" placeholder="opcional"></div>
+    <div id="tr-prev"></div></div>`,
+    `<div class="flex gap-2 justify-end"><button onclick="closeModal()" class="${BTN_G}">Cancelar</button><button id="tr-ok" onclick="trConfirmar('${gid}')" class="${BTN_P}">Registrar transferência</button></div>`, true);
+  trPrev(gid);
+}
+function trPrev(gid) {
+  const g = getGuarda(gid), p = trPlanoDe(gid), v = trLer(), ok = $('tr-ok'), box = $('tr-prev'); if (!g || !box) return;
+  if (ok) { ok.disabled = !!p.erro; ok.classList.toggle('opacity-50', !!p.erro); }
+  if (p.erro) { box.innerHTML = `<div class="rounded-lg bg-red-50 border border-red-200 p-2 text-xs text-red-800">${esc(p.erro)}</div>`; return; }
+  const de = getEquipe(g.equipeId).nome, para = (getEquipe(v.para) || {}).nome, hor = (eq, t) => { const c = getCiclo((getEquipe(eq) || {}).cicloId), h = c && horario(c, t, g.funcao); return h ? ` ${h[0]}–${h[1]}` : ''; };
+  box.innerHTML = `<div class="${CARD} p-3 space-y-1">
+    <div>① Último plantão em <b>${esc(de)}</b>: <b>${eeDia(p.ult)}</b> (${p.turnoUlt === 'D' ? 'diurno' : 'noturno'}${hor(g.equipeId, p.turnoUlt)})</div>
+    <div>② Folga de transição: <b>${p.folga.length} dia(s)</b>${p.folga.length ? ` (${eeDia(p.folga[0])} a ${eeDia(p.folga[p.folga.length - 1])})` : ''} · mínimo ${v.folgaMin}</div>
+    <div>③ Apresenta-se em <b>${esc(para)}</b>: <b>${eeDia(p.apr)}</b> (${p.turnoApr === 'D' ? 'diurno' : p.turnoApr === 'N' ? 'noturno' : 'sem plantão'}${p.turnoApr === 'D' || p.turnoApr === 'N' ? hor(v.para, p.turnoApr) : ''})</div>
+    ${p.extra > 0 && !v.apr ? `<div class="text-xs text-amber-800">A folga ficou com ${p.extra} dia(s) a mais que o mínimo porque a primeira escala de ${esc(para)} depois dos ${v.folgaMin} dias é só em ${br(p.apr)}.</div>` : ''}
+    ${p.aviso ? `<div class="text-xs text-amber-800">${esc(p.aviso)}</div>` : ''}
+    <div class="text-[11px] text-slate-500">Até ${br(p.ult)} ele aparece na ${esc(de)}; de ${br(iso(addDays(parseISO(p.ult), 1)))} a ${br(iso(addDays(parseISO(p.apr), -1)))} aparece como transição (TR); de ${br(p.apr)} em diante, em ${esc(para)}.</div></div>`;
+}
+function trConfirmar(gid) {
+  const g = getGuarda(gid), p = trPlanoDe(gid), v = trLer(); if (!g || p.erro || !exigir('tela.cadastros')) return;
+  const rec = { id: uid('tr_'), guardaId: gid, deId: g.equipeId, paraId: v.para, ultimo: p.ult, apresentacao: p.apr, folgaMin: v.folgaMin, motivo: v.mot, por: quemFez(), em: new Date().toISOString() };
+  const de = getEquipe(g.equipeId).nome, para = getEquipe(v.para).nome;
+  state.transferencias = (state.transferencias || []).concat([rec]); g.equipeId = v.para; _trMemo = { ref: null, n: -1, mapa: {} };
+  auditar('guarda', gid, 'transferência de equipe', `${g.nomeCompleto}: ${de} até ${br(p.ult)}; folga de ${p.folga.length} dia(s); apresenta-se em ${para} em ${br(p.apr)}${v.mot ? ' · ' + v.mot : ''}`);
+  save(); closeModal(); render(); toast(`Transferência registrada: apresenta-se em ${para} em ${br(p.apr)}`);
+  const pr = problemasEquipe(v.para); if (pr.some(x => x.includes('supervisores'))) setTimeout(() => toast(`${para}: ${pr.join(', ')}`, 'warn'), 300);
+}
+function trHistoricoHTML(gid) {
+  const L = transfsDe(gid); if (!L.length) return '';
+  return `<div class="md:col-span-2 border-t border-slate-200 pt-2"><div class="text-sm font-medium mb-1">Histórico de equipe</div>${L.map((t, i) => `<div class="text-xs text-slate-700 py-1 flex items-start justify-between gap-2"><div>${esc((getEquipe(t.deId) || {}).nome || '?')} → <b>${esc((getEquipe(t.paraId) || {}).nome || '?')}</b> · último plantão ${br(t.ultimo)} · apresentação ${br(t.apresentacao)}${t.motivo ? ' · ' + esc(t.motivo) : ''}</div>${i === L.length - 1 ? `<button onclick="trCancelar('${t.id}')" class="text-red-600 shrink-0">Cancelar</button>` : ''}</div>`).join('')}</div>`;
+}
+function trCancelar(id) {
+  const t = (state.transferencias || []).find(x => x.id === id); if (!t || !exigir('tela.cadastros')) return; const g = getGuarda(t.guardaId), de = (getEquipe(t.deId) || {}).nome, para = (getEquipe(t.paraId) || {}).nome;
+  confirmar('Cancelar transferência', `<p>O histórico volta a mostrar <b>${esc(g ? g.nomeCompleto : '')}</b> em <b>${esc(de)}</b> o tempo todo. Use só para desfazer um registro errado.</p>`, () => {
+    if (g && g.equipeId === t.paraId) g.equipeId = t.deId; state.transferencias = (state.transferencias || []).filter(x => x.id !== id); _trMemo = { ref: null, n: -1, mapa: {} };
+    auditar('guarda', t.guardaId, 'transferência cancelada', `${g ? g.nomeCompleto : ''}: ${de} → ${para}`); save(); closeModal(); render(); toast('Transferência cancelada');
+  }, 'Cancelar transferência');
 }
 
 /* ---------- Seletor de guarda (equipe + guarda, nativo no celular) ---------- */
@@ -3092,10 +3211,10 @@ function calendarioHTML(ano, mes, ops, ppc, romu, heDia) {
   return h + '</tbody></table>';
 }
 function editalHTML(ano, mes) {
-  const ferias = feriasDoMes(ano, mes), comFerias = new Set(ferias.map(a => a.guardaId));
-  const nm = g => impresso(g) + (comFerias.has(g.id) ? '*' : '');
+  const ferias = feriasDoMes(ano, mes), comFerias = new Set(ferias.map(a => a.guardaId)), iniM = iso(new Date(ano, mes, 1)), fimM = iso(new Date(ano, mes + 1, 0));
+  const nm = g => impresso(g) + (comFerias.has(g.id) ? '*' : '') + notaTransf(g, iniM, fimM);
   const usadas = new Set(), usa = e => { usadas.add(e.id); return e; };
-  const todos = eq => membros(eq.id).filter(g => !foraDoEdital(g));
+  const todos = eq => membrosNoPeriodo(eq.id, iniM, fimM).filter(g => !foraDoEdital(g));
   const agentesEq = eq => todos(eq).filter(g => g.funcao !== 'supervisor').map(nm);
   const ul = nomes => `<ul>${(nomes.length ? nomes : ['—']).map(n => `<li${n === '—' ? ' class="vz"' : ''}>${esc(n)}</li>`).join('')}</ul>`;
   const secao = (titulo, sub, corpo) => `<section class="sec"><div class="sec-tit"><b>${esc(titulo)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>${corpo}</section>`;
@@ -3104,7 +3223,7 @@ function editalHTML(ano, mes) {
   // 1) serviço operacional: um cartão por equipe, com supervisor e Central de Monitoramento
   const ops = equipesDoGrupo('Operacional').map(usa), comons = equipesDoGrupo('COMON'), cartas = [];
   ops.forEach(eq => {
-    const c = getCiclo(eq.cicloId), sup = membros(eq.id).filter(g => g.funcao === 'supervisor' && !foraDoEdital(g)).map(nm);
+    const c = getCiclo(eq.cicloId), sup = todos(eq).filter(g => g.funcao === 'supervisor').map(nm);
     const central = comons.filter(x => x.vinculo === eq.nome).map(x => { usa(x); return todos(x).map(nm).join(' / '); }).join(' · ');
     const [c1, c2] = partir2(agentesEq(eq));
     cartas.push(`<div class="card"><div class="card-h">EQUIPE ${esc(eq.nome)}</div><div class="card-sub">${esc(rotuloCiclo(c))}</div>
@@ -3136,7 +3255,7 @@ function editalHTML(ano, mes) {
   adm.forEach(eq => { const [a, b] = partir2(todos(eq).map(nm)); colsExp.push({ titulo: 'Administrativo', nomes: a }, { titulo: '', nomes: b }); });
   dc8.forEach(eq => colsExp.push({ titulo: 'Defesa Civil', nomes: todos(eq).map(nm) }));
   if (colsExp.length) partes.push(secao('EXPEDIENTE', adm.length ? rotuloCiclo(getCiclo(adm[0].cicloId)) : '', colunas(colsExp)));
-  const resto = state.equipes.filter(e => !usadas.has(e.id) && membros(e.id).some(g => !foraDoEdital(g)));
+  const resto = state.equipes.filter(e => !usadas.has(e.id) && membrosNoPeriodo(e.id, iniM, fimM).some(g => !foraDoEdital(g)));
   if (resto.length) partes.push(secao('OUTRAS EQUIPES', '', colunas(resto.map(eq => ({ titulo: eq.nome, nomes: todos(eq).map(nm) })).slice(0, 5))));
   if (comFerias.size) partes.push('<div class="nota-ast">* Em gozo de férias no período (ver quadro de férias).</div>');
 
@@ -3414,7 +3533,7 @@ function efetivoDoDia(d) {
   const eOn = (eq, t) => { const r = equipeNoDia(eq, t, d); return { eq, sups: r.sups, ags: r.ags, ausentes: r.ausentes.map(a => ({ g: a.g, motivo: a.motivo, equipe: eq.nome })),
     entram: [...r.subs].map(id => getGuarda(id)).filter(Boolean).map(impresso), saem: r.ausentes.filter(a => /^(Troca \(entregou|Em troca)/.test(a.motivo)).map(a => impresso(a.g)) }; };
   // quem trabalha numa folga ou muda de turno (troca de jornada) reforça o bloco em que passa a trabalhar
-  const reforco = (eqs, t) => { const ids = new Set(eqs.map(e => e.id)), out = []; state.guardas.forEach(g => { if (!ids.has(g.equipeId)) return; const st = statusGuarda(g, d); if (st.tj && st.tj.papel === 'entrada' && st.turno === t && !st.atividade) out.push(g); }); return out; };
+  const reforco = (eqs, t) => { const ids = new Set(eqs.map(e => e.id)), out = []; state.guardas.forEach(g => { if (!ids.has(equipeEm(g, k))) return; const st = statusGuarda(g, d); if (st.tj && st.tj.papel === 'entrada' && st.turno === t && !st.atividade) out.push(g); }); return out; };
   const agente = g => g.funcao !== 'supervisor', nomes = gs => gs.map(impresso);
   const ops = grupo('Operacional'), ppc = grupo('PPC'), romu = grupo('ROMU'), gtam = grupo('GTAM');
   const r = { data: k, diurno: null, noturno: null, romu: [], gtam: null };
@@ -3425,24 +3544,24 @@ function efetivoDoDia(d) {
     r.diurno = { equipe: opD.nome, presentes: ag.length, minimo: R.diurnoMin, nomes: nomes(ag), supervisores: nomes(dOp.sups), semSupervisor: !!R.exigeSupDiurno && !dOp.sups.length,
       ausentes: [].concat(dOp.ausentes, ...ppcD.map(x => x.ausentes)), ppc: ppcD.map(x => x.eq.nome), extras: exD, entram: [].concat(dOp.entram, ...ppcD.map(x => x.entram)), saem: [].concat(dOp.saem, ...ppcD.map(x => x.saem)), tjs: nomes(refD) };
     r.diurno.sobra = r.diurno.presentes - r.diurno.minimo; r.diurno.status = faixaEfetivo(r.diurno.presentes, r.diurno.minimo);
-    r.diurno.equipes = [{ nome: opD.nome, presentes: dOp.ags.length, base: membros(opD.id).filter(agente).length }].concat(ppcD.map(x => ({ nome: x.eq.nome, presentes: x.sups.length + x.ags.length, base: membros(x.eq.id).length })));
+    r.diurno.equipes = [{ nome: opD.nome, presentes: dOp.ags.length, base: membros(opD.id, d).filter(agente).length }].concat(ppcD.map(x => ({ nome: x.eq.nome, presentes: x.sups.length + x.ags.length, base: membros(x.eq.id, d).length })));
     if (refD.length + exD.length) r.diurno.equipes.push({ nome: 'Reforços', presentes: refD.length + exD.length, base: refD.length + exD.length });
     r.diurno.viaturas = Math.floor((r.diurno.presentes + (dOp.sups.length ? 1 : 0)) / 2);
   }
   const opN = ops.find(e => turno(e.id, d) === 'N');
   if (opN) {
-    const dN = eOn(opN, 'N'), refN = reforco(ops.filter(e => turno(e.id, d) !== 'N'), 'N'), exN = extrasDoBloco(k, 'N'), base = membros(opN.id).filter(agente).length;
+    const dN = eOn(opN, 'N'), refN = reforco(ops.filter(e => turno(e.id, d) !== 'N'), 'N'), exN = extrasDoBloco(k, 'N'), base = membros(opN.id, d).filter(agente).length;
     const pres = dN.ags.length + refN.filter(agente).length + exN.length, min = Math.max(0, base - R.noturnoMaxAus);
     r.noturno = { equipe: opN.nome, presentes: pres, minimo: min, base, nomes: nomes(dN.ags.concat(refN.filter(agente), exN.map(x => x.g))), supervisores: nomes(dN.sups), ausentes: dN.ausentes, extras: exN, entram: dN.entram, saem: dN.saem, tjs: nomes(refN), sobra: pres - min, status: faixaEfetivo(pres, min) };
     r.noturno.equipes = [{ nome: opN.nome, presentes: dN.ags.length, base }].concat(refN.length + exN.length ? [{ nome: 'Reforços', presentes: refN.length + exN.length, base: refN.length + exN.length }] : []);
     r.noturno.viaturas = Math.floor((pres + (dN.sups.length ? 1 : 0)) / 2);
   }
   romu.filter(e => turno(e.id, d) === 'D').forEach(e => { const x = eOn(e, 'D'), g = x.sups.concat(x.ags);
-    r.romu.push({ equipe: e.nome, presentes: g.length, minimo: R.romuMin, nomes: nomes(g), ausentes: x.ausentes, extras: [], entram: x.entram, saem: x.saem, tjs: [], equipes: [{ nome: e.nome, presentes: g.length, base: membros(e.id).length }], sobra: g.length - R.romuMin, status: faixaEfetivo(g.length, R.romuMin) }); });
+    r.romu.push({ equipe: e.nome, presentes: g.length, minimo: R.romuMin, nomes: nomes(g), ausentes: x.ausentes, extras: [], entram: x.entram, saem: x.saem, tjs: [], equipes: [{ nome: e.nome, presentes: g.length, base: membros(e.id, d).length }], sobra: g.length - R.romuMin, status: faixaEfetivo(g.length, R.romuMin) }); });
   const gtD = gtam.filter(e => turno(e.id, d) === 'D');
   if (gtD.length) {
     const xs = gtD.map(e => eOn(e, 'D')), ref = reforco(gtam.filter(e => turno(e.id, d) !== 'D'), 'D'), g = [].concat(...xs.map(x => x.sups.concat(x.ags)), ref);
-    r.gtam = { equipe: 'GTAM', presentes: g.length, minimo: R.gtamMin, nomes: nomes(g), ausentes: [].concat(...xs.map(x => x.ausentes)), extras: [], entram: [].concat(...xs.map(x => x.entram)), saem: [].concat(...xs.map(x => x.saem)), tjs: nomes(ref), equipes: gtD.map((q, i) => ({ nome: q.nome, presentes: xs[i].sups.length + xs[i].ags.length, base: membros(q.id).length })).concat(ref.length ? [{ nome: 'Reforço', presentes: ref.length, base: ref.length }] : []), sobra: g.length - R.gtamMin, status: faixaEfetivo(g.length, R.gtamMin) };
+    r.gtam = { equipe: 'GTAM', presentes: g.length, minimo: R.gtamMin, nomes: nomes(g), ausentes: [].concat(...xs.map(x => x.ausentes)), extras: [], entram: [].concat(...xs.map(x => x.entram)), saem: [].concat(...xs.map(x => x.saem)), tjs: nomes(ref), equipes: gtD.map((q, i) => ({ nome: q.nome, presentes: xs[i].sups.length + xs[i].ags.length, base: membros(q.id, d).length })).concat(ref.length ? [{ nome: 'Reforço', presentes: ref.length, base: ref.length }] : []), sobra: g.length - R.gtamMin, status: faixaEfetivo(g.length, R.gtamMin) };
   }
   return r;
 }
@@ -3586,6 +3705,7 @@ function statusGuarda(g, date) {
   }
   return st;
 }
+const tagTR = st => st && st.transicao && st.transicao.fase !== 'folga' ? `<div class="tr-tag">${st.transicao.fase === 'ultimo' ? 'ÚLT' : 'APR'}</div>` : '';
 const tagCUR = st => st.atividades && st.atividades.length && codigoVisual(st) !== 'CUR' ? '<div class="ev-tag">CUR</div>' : '';  // quando o código da célula já é CUR, não repete
 function diasDaAtividade(a) { const o = []; for (let d = parseISO(a.inicio), f = parseISO(a.fim); d <= f && o.length < 366; d = addDays(d, 1)) o.push(iso(d)); return o; }
 function horasDiaAtividade(a) {
@@ -3620,7 +3740,7 @@ function painelRequal() {
 /* ---------- Dias, leitura e descanso do guarda numa atividade ---------- */
 const arranjoDoDia = (p, k) => (p.arranjos && p.arranjos[k]) || { tipo: 'banco', tjId: '' };
 function motivoLeitura(g, dt, st) {
-  const eq = g.equipeId ? getEquipe(g.equipeId) : null, nomeEq = eq ? eq.nome : 'sem equipe';
+  const _e = equipeEm(g, iso(dt)), eq = _e && _e !== TRANSICAO ? getEquipe(_e) : null, nomeEq = eq ? eq.nome : 'sem equipe';
   if (st.ausencia) return `afastado: ${AUS_TIPOS[st.ausencia.tipo].nome.toLowerCase()}`;
   if (st.tj) return st.tj.turnoNovo ? `troca de jornada: muda para o turno ${st.tj.turnoNovo === 'D' ? 'diurno' : 'noturno'}` : st.tj.papel === 'entrada' ? `troca de jornada: trabalha na folga (plantão de ${brCurto(parseISO(st.tj.ref))})` : `folga por troca de jornada (trabalha em ${brCurto(parseISO(st.tj.ref))})`;
   if (st.troca) return st.troca.papel === 'entrada' ? `troca de escala: cobre ${nomeG(st.troca.com)}` : `troca de escala: entregou o plantão a ${nomeG(st.troca.com)}`;
@@ -3683,7 +3803,7 @@ function capacidadeDoDia(d) {
 }
 function blocoDoGuardaNoDia(g, d) {
   const st = statusGuardaBase(g, d); if (st.ausencia) return { estado: 'ausente' }; if (!st.trabalha) return { estado: 'folga' };
-  const eq = g.equipeId ? getEquipe(g.equipeId) : null, grp = eq ? eq.grupo : '', t = st.turno;
+  const _e = equipeEm(g, iso(d)), eq = _e && _e !== TRANSICAO ? getEquipe(_e) : null, grp = eq ? eq.grupo : '', t = st.turno;
   if (grp === 'Operacional') return { estado: 'servico', turno: t, bloco: t === 'D' ? 'D' : 'N', sup: g.funcao === 'supervisor' && t === 'D' };
   if (grp === 'PPC') return { estado: 'servico', turno: t, bloco: 'D' };
   if (grp === 'ROMU') return { estado: 'servico', turno: t, bloco: 'R:' + eq.nome };
@@ -3715,7 +3835,7 @@ function criarCtxPlan(par, pool) {
   P.eqInfo = g => { const eq = g.equipeId ? getEquipe(g.equipeId) : null; if (!eq) return null; const tam = membros(eq.id).length; return { id: eq.id, nome: eq.nome, tam, cap: Math.max(1, Math.floor(tam / 2)) }; };
   // quantos da equipe já estão fora de função no dia (afastados e trocas só contam se a equipe está de serviço; quem já está em outra atividade conta sempre)
   P.ja = (g, k) => get(P.M.ja, g.equipeId + '|' + k, () => { const eq = getEquipe(g.equipeId), d = parseISO(k), serv = ['D', 'N'].includes(turno(eq.id, d));
-    return membros(eq.id).filter(m => { const st = statusGuarda(m, d); return (st.atividades && st.atividades.length) || (serv && (st.ausencia || (st.tj && st.tj.papel === 'saida') || (st.troca && st.troca.papel === 'saida'))); }).length; });
+    return membros(eq.id, d).filter(m => { const st = statusGuarda(m, d); return (st.atividades && st.atividades.length) || (serv && (st.ausencia || (st.tj && st.tj.papel === 'saida') || (st.troca && st.troca.papel === 'saida'))); }).length; });
   P.rest = (g, k, est) => get(P.M.rest, g.id + '|' + k + '|' + est, () => { const iv = intervaloCurso(P.par, k); let js = P.jornadas(g); if (est === 'servico') js = js.filter(j => !(j.tipo === 'ordinaria' && iso(new Date(j.ini)) === k)); return descCore(js, iv.ini, iv.fim); });
   // a troca de jornada (de → para) é aceita se o guarda tem plantão em "de", folga em "para", sem conflitos e com descanso mínimo (réplica de validarTJ)
   P.tjOk = (g, de, para) => get(P.M.tj, g.id + '|' + de + '|' + para, () => {
@@ -4401,7 +4521,7 @@ function supEfetivoCalc(data, turno, convocados) {
   const d = parseISO(data), grupos = supGrupos(), R = { previstos: [], afastados: [], saidas: [], entradas: [], capacitacao: [], extras: [], convocados: [], presentes: [], mapa: {}, geradoEm: agoraISO() };
   const marca = (id, status, origem, motivo) => { if (!R.mapa[id]) R.mapa[id] = { status, origem, motivo: motivo || '' }; };
   state.guardas.forEach(g => {
-    const eq = g.equipeId ? getEquipe(g.equipeId) : null; if (!eq || !grupos.includes(eq.grupo || 'Outros')) return;
+    const _e = equipeEm(g, data), eq = _e && _e !== TRANSICAO ? getEquipe(_e) : null; if (!eq || !grupos.includes(eq.grupo || 'Outros')) return;
     const previsto = turnoGuarda(g, d) === turno, st = statusGuarda(g, d);
     if (previsto) {
       R.previstos.push(g.id);
@@ -5132,7 +5252,7 @@ function ipmTurnoEfetivo(g, date) {
   if (saida && jornadaBaseGuarda(g, date)) return 'F';
   return turnoGuarda(g, date);
 }
-const ipmDias = (g, ano, mes, turnos) => { const o = [], n = diasNoMes(ano, mes); for (let d = 1; d <= n; d++) if (turnos.includes(ipmTurnoEfetivo(g, new Date(ano, mes, d)))) o.push(d); return o; };
+const ipmDias = (g, ano, mes, turnos, eqs) => { const o = [], n = diasNoMes(ano, mes); for (let d = 1; d <= n; d++) { const dt = new Date(ano, mes, d); if ((!eqs || eqs.has(equipeEm(g, iso(dt)))) && turnos.includes(ipmTurnoEfetivo(g, dt))) o.push(d); } return o; };   // eqs: só os dias em que o guarda era de uma destas equipes
 function ipmTrocas(v) { if (!exigir('ipm.editar')) { render(); return; } if (v) delete state.ipm.semTrocas; else state.ipm.semTrocas = true; save(); render(); }
 const ipmLista = (a, ponto) => a.length ? a.join('. ') + (ponto === false ? '' : '.') : '';
 const ipmExp = c => !!c && (c.folgaNosFeriados || c.sequencia.length === 7);
@@ -5177,16 +5297,18 @@ function ipmPadrao(b) {
 function ipmEscalaRows(ano, mes) {
   const R = [], M = [], T = [], K = [], plano = ipmPlano(); let kAtual = '';
   const add = (cels, mesc, tipo, fg) => { const r = R.length, row = cels.slice(0, 7); while (row.length < 7) row.push(''); R.push(row); T.push(tipo); K.push(kAtual); if (mesc === 'AE') M.push({ s: { r, c: 0 }, e: { r, c: 4 } }); if (mesc === 'AH') M.push({ s: { r, c: 0 }, e: { r, c: 6 } }); if (fg) M.push({ s: { r, c: 5 }, e: { r, c: 6 } }); };
-  const dias = (g, tn, ponto) => ipmLista(ipmDias(g, ano, mes, tn), ponto), br = () => add([], null, 'br');
+  let blocoEq = null;   // equipes do bloco em montagem (filtra os dias de quem mudou de equipe no mês)
+  const dias = (g, tn, ponto) => ipmLista(ipmDias(g, ano, mes, tn, blocoEq), ponto), br = () => add([], null, 'br');
   // bloco de uma coluna só (ex.: Central noturna): o dia trabalhado no outro turno por troca de jornada aparece marcado, ex.: 19(D)
-  const diasUni = (g, tn) => { const o = [], n = diasNoMes(ano, mes), ou = tn === 'N' ? 'D' : 'N'; for (let d = 1; d <= n; d++) { const t = ipmTurnoEfetivo(g, new Date(ano, mes, d)); if (t === tn) o.push(String(d)); else if (t === ou) o.push(`${d}(${ou})`); } return o.length ? o.join('. ') + '.' : ''; };
+  const diasUni = (g, tn) => { const o = [], n = diasNoMes(ano, mes), ou = tn === 'N' ? 'D' : 'N'; for (let d = 1; d <= n; d++) { if (blocoEq && !blocoEq.has(equipeEm(g, iso(new Date(ano, mes, d))))) continue; const t = ipmTurnoEfetivo(g, new Date(ano, mes, d)); if (t === tn) o.push(String(d)); else if (t === ou) o.push(`${d}(${ou})`); } return o.length ? o.join('. ') + '.' : ''; };
   const gl = (g, f, gg, fg) => add([ipmNome(g), '', '', '', '', f, gg], 'AE', 'g', fg);
   add([`${MESES_UP[mes]}/${ano}`], 'AH', 'mes');
   plano.forEach(b => {
     kAtual = b.key;
     if (b.tipo === 'comonCab') { add(['COMON - Central de Monitoramento'], 'AH', 'equipe'); return; }
     const c = getCiclo(b.eq.cicloId), x = ipmBloco(b.key), titulo = x.titulo || b.padrao;
-    const todos = b.eqs ? [].concat(...b.eqs.map(e => membros(e.id))) : membros(b.eq.id), sups = todos.filter(g => g.funcao === 'supervisor'), ags = todos.filter(g => g.funcao !== 'supervisor');
+    const iniM = iso(new Date(ano, mes, 1)), fimM = iso(new Date(ano, mes + 1, 0)); blocoEq = new Set(b.eqs ? b.eqs.map(e => e.id) : [b.eq.id]);
+    const todos = b.eqs ? [].concat(...b.eqs.map(e => membrosNoPeriodo(e.id, iniM, fimM))) : membrosNoPeriodo(b.eq.id, iniM, fimM), sups = todos.filter(g => g.funcao === 'supervisor'), ags = todos.filter(g => g.funcao !== 'supervisor');
     const D = c.horarios.D, N = c.horarios.N;
     if (b.tipo === 'dn') {
       add([b.eq.nome, '', '', '', '', `Diurno (${ipmFaixa(D.agente)})`, `Noturno (${ipmFaixa(N.agente)})`], 'AE', 'equipe'); add([titulo], 'AE', 'des');
@@ -5294,11 +5416,12 @@ function ipmFinalHTML(ano, mes, op) {
   const celHTML = c => { const [bg, fg] = IPMF_COR[c.k] || IPMF_COR.F; return `<td ${c.tit ? `title="${esc(c.tit)}"` : ''} style="background:${bg};color:${fg};font-weight:700">${esc(c.c === 'F' ? '' : c.c)}</td>`; };
   let tot = { g: 0, trab: 0, folga: 0, aus: 0, troca: 0 };
   const tabelas = eqs.map(e => {
-    const gs = membros(e.id).filter(g => (!ids || ids.has(g.id)) && (!op.so || comTroca(g))).sort((a, b) => (a.funcao === 'supervisor' ? 0 : 1) - (b.funcao === 'supervisor' ? 0 : 1) || nomeG(a.id).localeCompare(nomeG(b.id)));
+    const gs = membrosNoPeriodo(e.id, iso(dias[0]), iso(dias[n - 1])).filter(g => (!ids || ids.has(g.id)) && (!op.so || comTroca(g))).sort((a, b) => (a.funcao === 'supervisor' ? 0 : 1) - (b.funcao === 'supervisor' ? 0 : 1) || nomeG(a.id).localeCompare(nomeG(b.id)));
     if (!gs.length) return '';
-    const lin = gs.map(g => { const c = dadosG(g), tr = c.filter(x => x.trab).length, au = c.filter(x => x.aus).length, tc = c.filter(x => x.marca).length, fo = n - tr - au; tot.g++; tot.trab += tr; tot.folga += fo; tot.aus += au; tot.troca += tc;
+    const dadosGE = g => dadosG(g).map((x, i) => equipeEm(g, iso(dias[i])) === e.id ? x : { c: '', k: 'F', semEq: true });   // dias em que o guarda era de outra equipe ficam em branco
+    const lin = gs.map(g => { const c = dadosGE(g), tr = c.filter(x => x.trab).length, au = c.filter(x => x.aus).length, tc = c.filter(x => x.marca).length, fo = n - tr - au - c.filter(x => x.semEq).length; tot.g++; tot.trab += tr; tot.folga += fo; tot.aus += au; tot.troca += tc;
       return `<tr><td class="ee-nm">${esc(nomeG(g.id))}${g.funcao === 'supervisor' ? ' <small>(sup.)</small>' : ''}</td>${c.map(celHTML).join('')}<td><b>${tr}</b></td><td>${fo}</td><td>${au || ''}</td><td>${tc || ''}</td></tr>`; }).join('');
-    const emServ = dias.map((d, i) => gs.filter(g => dadosG(g)[i].trab).length);
+    const emServ = dias.map((d, i) => gs.filter(g => dadosGE(g)[i].trab).length);
     return `<div class="ee-un"><h3>${esc(e.nome)} <small>${gs.length} guarda(s)</small></h3><table class="ee-t ee-m"><colgroup><col style="width:92px">${dias.map(() => '<col>').join('')}<col style="width:26px"><col style="width:26px"><col style="width:22px"><col style="width:26px"></colgroup>
       <thead><tr><th>Guarda</th>${dias.map(cabD).join('')}<th>Trab.</th><th>Folga</th><th>Aus.</th><th>Troc.</th></tr></thead><tbody>${lin}<tr class="ee-tot"><td class="ee-nm">Em serviço</td>${emServ.map(v => `<td>${v || ''}</td>`).join('')}<td colspan="4"></td></tr></tbody></table></div>`; }).join('');
   const gsSel = ids || (op.un || op.so ? new Set(state.guardas.filter(g => eqs.some(e => e.id === g.equipeId) && (!op.so || comTroca(g))).map(g => g.id)) : null);
