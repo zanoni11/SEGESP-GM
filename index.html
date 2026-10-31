@@ -226,7 +226,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.10.31.3';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.11.01.1';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
@@ -2217,7 +2217,7 @@ function viewExtras() {
     ${abasExtras()}
     <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
       ${navData('mudarMes(-1)', nomeMes(mesSel), 'mudarMes(1)')}
-      <div class="flex gap-2"><button onclick="formLimite()" class="${BTN_O}">Limite mensal</button><button onclick="formExtra()" class="${BTN_P}">+ Nova vaga</button></div>
+      <div class="flex gap-2"><button onclick="formLimite()" class="${BTN_O}">Limite mensal</button><button onclick="formColarVagas()" class="${BTN_O}">Colar vagas</button><button onclick="formExtra()" class="${BTN_P}">+ Nova vaga</button></div>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3 mb-3">
       ${cardNum(limite === null ? '—' : fmtHoras(limite) + 'h', 'Limite mensal', 'text-slate-700')}
@@ -2371,6 +2371,47 @@ async function baixarRelatorioExtras() {
 }
 
 /* ---------- Vaga: criar / editar / excluir ---------- */
+/* ---------- Colar vagas de hora extra (tabela: data, horas, horário) ---------- */
+// Cada linha vale 1 vaga; linhas iguais (mesma data e horário) viram uma vaga com várias posições. As horas são sempre calculadas pelo horário.
+function parseVagasExtras(texto) {
+  const hh = (h, m) => `${p2(Math.min(23, +h))}:${m ? p2(Math.min(59, +m)) : '00'}`, linhas = [], ignoradas = [];
+  String(texto || '').split(/\r?\n/).forEach((lin, i) => {
+    if (!lin.trim()) return;
+    const mData = lin.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/) || null, mIso = lin.match(/(\d{4})-(\d{2})-(\d{2})/);
+    const data = mData ? `${mData[3]}-${p2(mData[2])}-${p2(mData[1])}` : mIso ? mIso[0] : '';
+    if (!data) { if (i > 0 || /\d/.test(lin)) ignoradas.push(lin.trim()); return; }
+    const cols = lin.split('\t'), resto = lin.replace(mData ? mData[0] : mIso[0], ' '), horCol = cols.length >= 3 ? cols[cols.length - 1] : resto.replace(/^\s*\d+(?:[.,]\d+)?\s+/, '');
+    const t = [...String(horCol).matchAll(/(\d{1,2})(?:[:hH](\d{2}))?/g)].map(m => hh(m[1], m[2])), hrsCol = cols.length >= 3 ? parseFloat(String(cols[1]).replace(',', '.')) : parseFloat((resto.match(/^\s*(\d+(?:[.,]\d+)?)/) || [])[1]);
+    if (t.length < 2 || t[0] === t[1] || isNaN(parseISO(data).getTime())) { ignoradas.push(lin.trim()); return; }
+    linhas.push({ data, inicio: t[0], fim: t[1], horasTabela: isNaN(hrsCol) ? null : hrsCol });
+  });
+  const grupos = {};
+  linhas.forEach(l => { const k = `${l.data}|${l.inicio}|${l.fim}`; const g = grupos[k] = grupos[k] || { data: l.data, inicio: l.inicio, fim: l.fim, vagas: 0, horasTabela: l.horasTabela }; g.vagas++; });
+  const lista = Object.values(grupos).sort((a, b) => (a.data + a.inicio) < (b.data + b.inicio) ? -1 : 1).map(g => {
+    const horas = round2(duracaoMin(g.inicio, g.fim) / 60), ex = state.horasExtras.find(h => h.data === g.data && h.inicio === g.inicio && h.fim === g.fim);
+    return Object.assign(g, { horas, existe: ex ? ex.vagas : 0, difHoras: g.horasTabela != null && Math.abs(g.horasTabela - horas) > 0.01 });
+  });
+  return { lista, ignoradas, linhas: linhas.length };
+}
+function formColarVagas() {
+  openModal('Colar vagas de hora extra', `<p class="text-xs text-slate-500 mb-2">Cole a tabela com as colunas <b>Data · Horas · Horário</b> (ex.: <i>19/11/2026 · 6 · 18H ÀS 00H</i>). Cada linha vale uma vaga; linhas iguais viram uma vaga com várias posições. As horas são calculadas pelo horário.</p>
+    <textarea id="cv-txt" rows="8" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-mono" placeholder="DATA&#9;HORAS&#9;HORÁRIO&#10;19/11/2026&#9;6&#9;18H ÀS 00H" oninput="previaColarVagas()"></textarea>
+    <div class="mt-2"><label class="block text-xs text-slate-500 mb-1" for="cv-mot">Motivo (opcional, vale para todas)</label><input id="cv-mot" class="${INPUT}" placeholder="Ex.: Cobertura operacional"></div><div id="cv-prev" class="mt-3"></div>`,
+    `<div class="flex gap-2"><button onclick="closeModal()" class="${BTN_G} ml-auto">Cancelar</button><button id="cv-ok" onclick="confirmarColarVagas()" class="${BTN_P} opacity-50" disabled>Criar vagas</button></div>`, true);
+}
+function previaColarVagas() {
+  const r = parseVagasExtras($('cv-txt').value), box = $('cv-prev'), ok = $('cv-ok'), novas = r.lista.filter(x => !x.existe), pos = novas.reduce((n, x) => n + x.vagas, 0);
+  if (ok) { ok.disabled = !novas.length; ok.classList.toggle('opacity-50', !novas.length); ok.textContent = novas.length ? `Criar ${novas.length} vaga${novas.length > 1 ? 's' : ''} (${pos} posiç${pos > 1 ? 'ões' : 'ão'})` : 'Criar vagas'; }
+  if (!r.lista.length) { box.innerHTML = r.ignoradas.length ? `<div class="text-xs text-red-700">Nenhuma linha reconhecida. Use data (dd/mm/aaaa) e horário (18H ÀS 00H).</div>` : ''; return; }
+  box.innerHTML = `<div class="text-xs text-slate-600 mb-1">${r.linhas} linha(s) → <b>${r.lista.length} vaga(s)</b>, ${pos} posiç${pos > 1 ? 'ões' : 'ão'} nova(s)${r.ignoradas.length ? ` · <span class="text-red-700">${r.ignoradas.length} linha(s) ignorada(s)</span>` : ''}</div>
+    <div class="max-h-[40vh] overflow-y-auto border border-slate-200 rounded-lg"><table class="w-full text-xs"><thead><tr class="text-left text-slate-500"><th class="p-1">Data</th><th>Horário</th><th>Horas</th><th>Vagas</th><th></th></tr></thead><tbody>${r.lista.map(x => `<tr class="border-t border-slate-100 ${x.existe ? 'text-slate-400' : ''}"><td class="p-1">${DIA_NOME[parseISO(x.data).getDay()]} ${br(x.data)}</td><td>${x.inicio}–${x.fim}</td><td>${fmtHoras(x.horas)}h</td><td>${x.vagas}</td><td class="text-[11px]">${x.existe ? `já existe (${x.existe} vaga${x.existe > 1 ? 's' : ''}); não será criada` : x.difHoras ? `<span class="text-amber-700">a tabela diz ${fmtHoras(x.horasTabela)}h; o app usa ${fmtHoras(x.horas)}h pelo horário</span>` : '<span class="text-emerald-700">nova</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function confirmarColarVagas() {
+  const r = parseVagasExtras($('cv-txt').value), motivo = $('cv-mot').value.trim(), novas = r.lista.filter(x => !x.existe); if (!novas.length) return;
+  novas.forEach(x => state.horasExtras.push({ id: uid('he_'), data: x.data, vagas: x.vagas, inicio: x.inicio, fim: x.fim, horas: x.horas, motivo, escalados: [] }));
+  auditar('horas extras', 'vagas', 'vagas coladas', `${novas.length} vaga(s), ${novas.reduce((n, x) => n + x.vagas, 0)} posição(ões), de ${br(novas[0].data)} a ${br(novas[novas.length - 1].data)}`);
+  save(); closeModal(); const d = parseISO(novas[0].data); mesSel = new Date(d.getFullYear(), d.getMonth(), 1); render(); toast(`${novas.length} vaga${novas.length > 1 ? 's criadas' : ' criada'}`);
+}
 function formExtra(id, rascunho) {
   const hoje = new Date();
   const dataPadrao = hoje.getFullYear() === mesSel.getFullYear() && hoje.getMonth() === mesSel.getMonth() ? iso(hoje) : iso(mesSel);
