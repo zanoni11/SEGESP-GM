@@ -224,7 +224,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.10.30.2';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.10.31.1';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
@@ -1293,6 +1293,27 @@ function avisosEmenda(eqIds) {
     <div class="text-xs mt-1">Isso costuma indicar uma reancoragem nessa virada. Confira o histórico em Equipes.</div></div>`;
 }
 
+/* ---------- Turmas de instrução na escala do mês: data do curso e compensação de cada participante ---------- */
+// por participante e por dia do curso: dentro do serviço, folga trabalhada (banco de horas), compensada por troca de jornada (folga em outra data) ou afastado
+function turmasDoMes(ano, mes) {
+  const ini = iso(new Date(ano, mes, 1)), fim = iso(new Date(ano, mes + 1, 0));
+  return state.atividades.filter(a => a.tipo !== 'ead' && a.status !== 'cancelada' && a.inicio <= fim && a.fim >= ini)
+    .sort((a, b) => (a.inicio + (a.horaIni || '')) < (b.inicio + (b.horaIni || '')) ? -1 : 1)
+    .map(a => ({ a, linhas: a.participantes.map(p => { const g = getGuarda(p.guardaId); if (!g) return null;
+      const itens = diasDoParticipante(a, p, false).map(d => { const tj = d.estado === 'tj' ? state.trocasJornada.find(t => t.id === arranjoDoDia(p, d.k).tjId) : null; return { k: d.k, estado: d.estado, de: tj ? tj.de : '' }; });
+      return { g, itens }; }).filter(Boolean).sort((x, y) => impresso(x.g).localeCompare(impresso(y.g))) }));
+}
+function turmaItemTxt(a, it) {
+  const d = k => brCurto(parseISO(k));
+  return it.estado === 'tj' ? `${d(it.k)} → folga em ${it.de ? d(it.de) : '?'} (troca de jornada)` : it.estado === 'folga' ? `${d(it.k)} → banco de horas (${fmtHoras(horasDiaAtividade(a))}h)` : it.estado === 'ausente' ? `${d(it.k)} → afastado` : `${d(it.k)} → dentro do serviço`;
+}
+function turmasMesHTML(ano, mes) {
+  const L = turmasDoMes(ano, mes); if (!L.length) return '';
+  return `<div class="${CARD} p-3 mt-3"><h3 class="font-semibold text-sm mb-1">Turmas de instrução do mês</h3><p class="text-[11px] text-slate-500 mb-1">Data do curso de cada participante e, quando houver, a data da folga que compensa a escala. No quadro acima o dia do curso aparece como CUR e a folga de compensação como TJ.</p>
+    ${L.map(({ a, linhas }) => `<div class="border-t border-slate-100 py-2"><div class="font-medium text-sm">${esc(a.nome)} <span class="text-[11px] px-2 py-0.5 rounded-full ${(RQ_TIPOS[a.tipo] || RQ_TIPOS.outro).cor}">${(RQ_TIPOS[a.tipo] || RQ_TIPOS.outro).nome}</span> <span class="text-[11px] text-slate-500">${RQ_STATUS[a.status] || ''}</span></div>
+      <div class="text-xs text-slate-600 mb-1">${esc(periodoAt(a))}${a.local ? ' · ' + esc(a.local) : ''} · ${a.retira ? 'retira do serviço de rua' : 'dentro do próprio serviço'}</div>
+      ${linhas.length ? `<ul class="text-xs space-y-0.5">${linhas.map(x => `<li><b>${esc(nomeCurto(x.g))}</b>${x.g.equipeId ? ` <span class="text-slate-500">(${esc((getEquipe(x.g.equipeId) || {}).nome || '')})</span>` : ''}: ${x.itens.map(it => esc(turmaItemTxt(a, it))).join(' · ')}</li>`).join('')}</ul>` : '<div class="text-xs text-slate-500">Sem participantes ainda.</div>'}</div>`).join('')}</div>`;
+}
 function viewMes() {
   const y = mesSel.getFullYear(), m = mesSel.getMonth(), n = diasNoMes(y, m);
   const dias = [...Array(n)].map((_, i) => new Date(y, m, i + 1));
@@ -1334,7 +1355,7 @@ function viewMes() {
         </tr>`).join('')}
         ${linhaHEGrupo(gr, dias)}`).join('')}</tbody></table></div>
       <p class="text-xs text-slate-500 mt-2">★ supervisor · D diurno · N noturno · F folga · HE hora extra (contorno rosa no dia, total do mês na última coluna e por equipe na linha “HE no dia”) · FÉR férias · AT atestado · AF afastamento · DS dispensa · troca = plantão trocado entre guardas · TJ = troca de jornada (folga trabalhada) · CUR = em capacitação (fora do serviço de rua; contorno azul)</p>`
-    : `<div class="${CARD} p-8 text-center text-sm text-slate-500">Nenhum guarda neste filtro.</div>`}`;
+    : `<div class="${CARD} p-8 text-center text-sm text-slate-500">Nenhum guarda neste filtro.</div>`}${turmasMesHTML(y, m)}`;
 }
 
 /* ============================================================
@@ -2679,6 +2700,8 @@ function tituloOcorrencia(st) {
     return `Apresenta-se na equipe ${n(t.paraId)} (vem de ${n(t.deId)})`; }
   if (st.ausencia) { const a = st.ausencia; return `${AUS_TIPOS[a.tipo].nome}: ${periodoTxt(a)}${a.obs ? ' — ' + a.obs : ''}`; }
   if (st.troca) return st.troca.papel === 'saida' ? `Troca: entregou o plantão a ${nomeG(st.troca.com)}` : `Troca: assume o plantão de ${nomeG(st.troca.com)}`;
+  if (st.tj && !st.tj.turnoNovo) { const reg = state.trocasJornada.find(t => t.id === st.tj.id), at = reg && reg.atividadeId ? getAtividade(reg.atividadeId) : null;
+    if (at) return st.tj.papel === 'saida' ? `Folga de compensação do curso "${at.nome}" (curso em ${br(st.tj.ref)})` : `Curso "${at.nome}": dia de curso numa folga (compensa o plantão de ${br(st.tj.ref)})`; }
   if (st.tj && st.tj.turnoNovo) return `Troca de jornada: muda de turno neste dia (${st.base} → ${st.tj.turnoNovo})`;
   if (st.tj) return st.tj.papel === 'saida' ? `Troca de jornada: folga neste dia (trabalha em ${br(st.tj.ref)})` : `Troca de jornada: trabalha na folga (plantão de ${br(st.tj.ref)})`;
   if (st.atividades && st.atividades.length) return `Capacitação: ${st.atividades.map(e => e.nome).join(', ')}${st.atividade ? ' (fora do efetivo de rua)' : ''}`;
@@ -3379,7 +3402,7 @@ function editalHTML(ano, mes) {
     `<div class="linhas">${linhasHE.join('')}</div>${docTotaisExtras ? `<div class="sub-h">Total por guarda no mês</div><div class="fer">${totaisHE.map(a => `<div><b>${esc(impresso(a.g))}</b><span>${fmtHoras(a.horas)}h</span></div>`).join('')}</div>` : ''}`) : '';
   const iniMes = iso(new Date(ano, mes, 1)), fimMes = iso(new Date(ano, mes + 1, 0));
   const evsMes = docIncluirRequal ? state.atividades.filter(a => a.tipo !== 'ead' && a.status !== 'cancelada' && a.inicio <= fimMes && a.fim >= iniMes).sort((a, b) => (a.inicio + (a.horaIni || '')) < (b.inicio + (b.horaIni || '')) ? -1 : 1) : [];
-  const agenda = evsMes.length ? secao('AGENDA DE REQUALIFICAÇÃO', `${evsMes.length} atividade${evsMes.length > 1 ? 's' : ''}`, `<div class="linhas">${evsMes.map(a => `<div class="lin"><div class="k"><b>${brCurto(parseISO(a.inicio))}${a.fim !== a.inicio ? ' a ' + brCurto(parseISO(a.fim)) : ''}</b><small>${a.horaIni && a.horaFim ? `${hhU(a.horaIni)} ÀS ${hhU(a.horaFim)}` : 'dia todo'}</small></div><div class="v">${esc(a.nome)}${a.local ? ` <span class="vz">· ${esc(a.local)}</span>` : ''}</div></div>`).join('')}</div>`) : '';
+  const agenda = evsMes.length ? secao('TURMAS DE INSTRUÇÃO E REQUALIFICAÇÃO', `${evsMes.length} atividade${evsMes.length > 1 ? 's' : ''}`, `<div class="linhas">${evsMes.map(a => `<div class="lin"><div class="k"><b>${brCurto(parseISO(a.inicio))}${a.fim !== a.inicio ? ' a ' + brCurto(parseISO(a.fim)) : ''}</b><small>${a.horaIni && a.horaFim ? `${hhU(a.horaIni)} ÀS ${hhU(a.horaFim)}` : 'dia todo'}</small></div><div class="v">${esc(a.nome)}${a.local ? ` <span class="vz">· ${esc(a.local)}</span>` : ''}${(() => { const t = turmasDoMes(ano, mes).find(x => x.a.id === a.id); return t && t.linhas.length ? `<div class="bo-aus2" style="color:#5b6675">${t.linhas.map(x => `<b>${esc(impresso(x.g))}</b>: ${x.itens.map(it => esc(turmaItemTxt(a, it))).join('; ')}`).join(' · ')}</div>` : ''; })()}</div></div>`).join('')}</div>`) : '';
   const ppc = equipesDoGrupo('PPC'), romu = equipesDoGrupo('ROMU');
   const hr = (eqs, t) => { const h = eqs.length && getCiclo(eqs[0].cicloId).horarios[t] && getCiclo(eqs[0].cicloId).horarios[t].agente; return h ? `${hhL(h[0])}–${hhL(h[1])}` : ''; };
   const leg = ops.length ? `<div class="leg"><b>Legenda:</b> Dia ${hr(ops, 'D')} · Noite ${hr(ops, 'N')}${ppc.length ? ` · PPC ${hr(ppc, 'D')}` : ''}${romu.length ? ` · ROMU ${hr(romu, 'D')}` : ''}. Letras indicam a equipe: ${ops.map(e => `${letraEq(e)} = ${e.nome}`).join(', ')}.${linhasHE.length ? ' <b>Hora extra</b> = guardas escalados no dia (ver quadro de horas extras).' : ''}</div>` : '';
@@ -3522,7 +3545,7 @@ const DOC_CSS = `
 .bo-ul{margin:0 0 0 14px!important;list-style:disc!important}.bo-ul li{margin:1px 0}
 .bo-avisos{border-left:4px solid #b45309;background:#fffbeb;padding:7px 11px;font-size:10.5px}
 @media print{.doc-folha{width:auto!important;zoom:1!important;box-shadow:none!important;padding:0!important;margin:0!important}.of-logo.vazio{visibility:hidden}}`;
-let docNumBoletim = '', docIncluirExtras = true, docMotivoExtras = false, docTotaisExtras = true, docIncluirRequal = false;
+let docNumBoletim = '', docIncluirExtras = true, docMotivoExtras = false, docTotaisExtras = true, docIncluirRequal = true;
 function garantirCssDoc() { if (!$('doc-css')) { const s = document.createElement('style'); s.id = 'doc-css'; s.textContent = DOC_CSS + DOC_CSS_SUP + DOC_CSS_EE; document.head.appendChild(s); } }
 const docPaisagem = () => docTab === 'especial' || docTab === 'ipmfinal';
 function folhaAtual() { if (docTab === 'ipmfinal') return ipmFinalHTML(ipmMes.getFullYear(), ipmMes.getMonth()); if (docTab === 'especial') return eeFolhaHTML(eeAtual()); if (docTab === 'ipm') return ipmFolhaHTML(ipmMes.getFullYear(), ipmMes.getMonth()); if (docTab === 'ci' || docTab === 'superv') return folhaSuperv(); return docTab === 'edital' ? editalHTML(docMes.getFullYear(), docMes.getMonth()) : boletimHTML(boletimDados(iso(docDia))); }
@@ -3550,7 +3573,7 @@ function viewDocs() {
       <label class="flex items-center gap-2 text-sm mt-2"><input type="checkbox" class="w-5 h-5 accent-teal-700" ${docIncluirAtestado ? 'checked' : ''} onchange="docIncluirAtestado=this.checked;atualizarFolha()"> Incluir atestados médicos no boletim <span class="text-xs text-slate-500">(informação de saúde: deixe desmarcado se for circular)</span></label></div>`}
     ${ed ? `<div class="${CARD} p-3 mb-3 no-print"><label class="flex items-center gap-2 text-sm"><input type="checkbox" class="w-5 h-5 accent-teal-700" ${docIncluirExtras ? 'checked' : ''} onchange="docIncluirExtras=this.checked;atualizarFolha()"> Incluir a escala de horas extras do mês no edital</label>
       <label class="flex items-center gap-2 text-sm mt-2"><input type="checkbox" class="w-5 h-5 accent-teal-700" ${docTotaisExtras ? 'checked' : ''} onchange="docTotaisExtras=this.checked;atualizarFolha()"> Mostrar o total de horas por guarda no mês</label>
-      <label class="flex items-center gap-2 text-sm mt-2"><input type="checkbox" class="w-5 h-5 accent-teal-700" ${docIncluirRequal ? 'checked' : ''} onchange="docIncluirRequal=this.checked;atualizarFolha()"> Incluir a agenda de requalificação do mês no edital</label>
+      <label class="flex items-center gap-2 text-sm mt-2"><input type="checkbox" class="w-5 h-5 accent-teal-700" ${docIncluirRequal ? 'checked' : ''} onchange="docIncluirRequal=this.checked;atualizarFolha()"> Incluir as turmas de instrução do mês no edital (data do curso e compensações)</label>
       <label class="flex items-center gap-2 text-sm mt-2"><input type="checkbox" class="w-5 h-5 accent-teal-700" ${docMotivoExtras ? 'checked' : ''} onchange="docMotivoExtras=this.checked;atualizarFolha()"> Mostrar o motivo de cada hora extra <span class="text-xs text-slate-500">(deixe desmarcado para publicação)</span></label>
       <p class="text-xs text-slate-500 mt-2">${relatorioExtras(ymDe(iso(docMes))).regs.length ? 'Saem as vagas com guarda escalado. Se escalar mais extras depois, gere o edital de novo.' : `Nenhuma hora extra escalada em ${nomeMes(docMes)}: a seção não aparece.`}</p></div>` : ''}
     ${semLogo ? `<div class="bg-sky-50 border border-sky-200 text-sky-900 rounded-lg px-3 py-2 text-sm mb-3 no-print">Os logos do Município e da Guarda ainda não foram enviados. Envie-os em <b>Configurações › Logos e cabeçalho</b> para aparecerem no topo do documento.</div>` : ''}
