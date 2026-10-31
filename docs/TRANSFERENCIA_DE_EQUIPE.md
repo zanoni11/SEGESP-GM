@@ -18,7 +18,7 @@
 - Entre o último plantão e a apresentação: folga de transição, com código **TR** e a explicação ao tocar no dia.
 - Último plantão e apresentação ficam marcados nas células (**ÚLT** e **APR**).
 - A partir da apresentação: segue o ciclo da equipe nova.
-- No edital e no IPM do mês da troca o guarda aparece nas duas equipes, com a observação das datas.
+- No **edital** (Documentos) o guarda aparece nas duas equipes com a observação das datas em **vermelho**, e uma seção **Transferências de equipe** (também em vermelho) traz último plantão, dias de folga de transição e apresentação. Na **escala final do IPM** os dias de transição aparecem como **TR** em vermelho, com legenda. Na tela Mês e na Semana, TR, ÚLT e APR também ficam em vermelho.
 
 ## Onde fica registrado
 
