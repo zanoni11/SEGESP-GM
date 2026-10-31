@@ -43,7 +43,9 @@
   .he-linha .sticky-col { background: #fff1f2 !important; }
   .he-tag { font-size: 9px; line-height: 1; font-weight: 700; color: #be123c; margin-top: 1px; white-space: nowrap; }
   .st-fer { background: #ede9fe; color: #5b21b6; font-size: 10px; }
-  .st-tr { background: #fef3c7; color: #92400e; font-size: 10px; }
+  .st-tr { background: #fecaca; color: #991b1b; font-size: 10px; font-weight: 700; }
+  .eq-cell { outline: 2px solid #dc2626; outline-offset: -2px; }
+  .eq-tag { font-size: 8px; line-height: 1; font-weight: 700; color: #b91c1c; margin-top: 1px; white-space: nowrap; }
   .st-at { background: #ffe4e6; color: #9f1239; font-size: 10px; }
   .st-af { background: #e2e8f0; color: #0f172a; font-size: 10px; }
   .st-ds { background: #cffafe; color: #155e75; font-size: 10px; }
@@ -154,7 +156,7 @@
     .print-grid { font-size: 7px; width: 100%; }
     .print-grid th, .print-grid td { padding: 1px !important; min-width: 0 !important; }
     .print-title { display: block !important; }
-    .shift-D, .shift-N, .shift-F, .shift-EV, .he-cell, .he-tag, .ev-cell, .ev-tag, .he-linha td, .st-fer, .st-tr, .st-at, .st-af, .st-ds, .tr-cell, .tr-tag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .shift-D, .shift-N, .shift-F, .shift-EV, .he-cell, .he-tag, .ev-cell, .ev-tag, .he-linha td, .st-fer, .st-tr, .eq-cell, .eq-tag, .st-at, .st-af, .st-ds, .tr-cell, .tr-tag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 
   .brand-bar { background: #0e7490; color: #f8fafc; }
@@ -224,7 +226,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.10.31.1';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.10.31.2';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
@@ -1261,7 +1263,7 @@ function viewSemana() {
           const ex = semanaPorGuarda ? extrasDoGuardaNoDia(l, d) : [], nEq = semanaPorGuarda ? 0 : extrasEquipeNoDia(l.id, d);
           const tag = semanaPorGuarda ? tagHE(ex) + tagTR(st) : (nEq ? `<div class="he-tag">HE ×${nEq}</div>` : '');
           const tit = [st ? tituloDia(st) : '', ex.length ? tituloHE(ex) : ''].filter(Boolean).join(' | ');
-          return `<td class="p-1 border-b border-slate-100 text-center font-semibold ${classeCodigo(t)} ${ex.length || nEq ? 'he-cell' : ''} ${st && (st.troca || st.tj) ? 'tr-cell' : ''}" ${tit ? `title="${esc(tit)}"` : ''}>${t || ''}${st && st.troca ? '<div class="tr-tag">troca</div>' : st && st.tj ? '<div class="tr-tag">TJ</div>' : ''}${tag}</td>`; }).join('')}
+          return `<td class="p-1 border-b border-slate-100 text-center font-semibold ${classeCodigo(t)} ${ex.length || nEq ? 'he-cell' : ''} ${st && (st.troca || st.tj) ? 'tr-cell' : ''} ${st && st.transicao ? 'eq-cell' : ''}" ${tit ? `title="${esc(tit)}"` : ''}>${t || ''}${st && st.troca ? '<div class="tr-tag">troca</div>' : st && st.tj ? '<div class="tr-tag">TJ</div>' : ''}${tag}</td>`; }).join('')}
       </tr>`).join('')}</tbody></table></div>`;
   }
   $('main').innerHTML = html;
@@ -1350,11 +1352,11 @@ function viewMes() {
         <tr><td class="sticky-col p-1.5 font-bold border-b border-r border-slate-200 ${corEq(gr.k) ? '' : '!bg-slate-50'} whitespace-nowrap" ${corEq(gr.k) ? `style="background:${corEq(gr.k)};color:${ipmContraste(corEq(gr.k))}"` : ''}>${esc(gr.nome)}</td><td colspan="${n + 1}" class="${corEq(gr.k) ? '' : 'bg-slate-50'} border-b border-slate-200" ${corEq(gr.k) ? `style="background:${corEq(gr.k)}"` : ''}></td></tr>
         ${gr.gs.map(g => `<tr>
           <td class="sticky-col p-1.5 border-b border-r border-slate-200 whitespace-nowrap max-w-[120px] md:max-w-none truncate">${g.funcao === 'supervisor' ? '★ ' : ''}${esc(nomeCurto(g))}</td>
-          ${dias.map(d => { const st = statusGuarda(g, d), t = codigoVisual(st), ex = extrasDoGuardaNoDia(g, d); const tit = [tituloDia(st), ex.length ? tituloHE(ex) : ''].filter(Boolean).join(' | '); return `<td class="p-0.5 border-b border-slate-100 text-center font-semibold cell ${classeCodigo(t)} ${ex.length ? 'he-cell' : ''} ${st.atividades && st.atividades.length ? 'ev-cell' : ''} ${st.troca || st.tj ? 'tr-cell' : ''}" ${tit ? `title="${esc(tit)}"` : ''}>${t}${st.troca ? '<div class="tr-tag">troca</div>' : st.tj ? '<div class="tr-tag">TJ</div>' : ''}${tagHE(ex)}${tagCUR(st)}${tagTR(st)}</td>`; }).join('')}
+          ${dias.map(d => { const st = statusGuarda(g, d), t = codigoVisual(st), ex = extrasDoGuardaNoDia(g, d); const tit = [tituloDia(st), ex.length ? tituloHE(ex) : ''].filter(Boolean).join(' | '); return `<td class="p-0.5 border-b border-slate-100 text-center font-semibold cell ${classeCodigo(t)} ${ex.length ? 'he-cell' : ''} ${st.atividades && st.atividades.length ? 'ev-cell' : ''} ${st.troca || st.tj ? 'tr-cell' : ''} ${st.transicao ? 'eq-cell' : ''}" ${tit ? `title="${esc(tit)}"` : ''}>${t}${st.troca ? '<div class="tr-tag">troca</div>' : st.tj ? '<div class="tr-tag">TJ</div>' : ''}${tagHE(ex)}${tagCUR(st)}${tagTR(st)}</td>`; }).join('')}
           <td class="p-0.5 border-b border-slate-100 text-center font-bold text-rose-700 text-[10px]">${(v => v ? fmtHoras(v) : '')(horasExtrasGuardaMes(g, ymDe(iso(mesSel))))}</td>
         </tr>`).join('')}
         ${linhaHEGrupo(gr, dias)}`).join('')}</tbody></table></div>
-      <p class="text-xs text-slate-500 mt-2">★ supervisor · D diurno · N noturno · F folga · HE hora extra (contorno rosa no dia, total do mês na última coluna e por equipe na linha “HE no dia”) · FÉR férias · AT atestado · AF afastamento · DS dispensa · troca = plantão trocado entre guardas · TJ = troca de jornada (folga trabalhada) · CUR = em capacitação (fora do serviço de rua; contorno azul)</p>`
+      <p class="text-xs text-slate-500 mt-2">★ supervisor · D diurno · N noturno · F folga · HE hora extra (contorno rosa no dia, total do mês na última coluna e por equipe na linha “HE no dia”) · FÉR férias · AT atestado · AF afastamento · DS dispensa · troca = plantão trocado entre guardas · TJ = troca de jornada (folga trabalhada) · CUR = em capacitação (fora do serviço de rua; contorno azul) · <b class="text-red-700">TR = transição entre equipes (vermelho; ÚLT = último plantão na equipe antiga, APR = apresentação na nova)</b></p>`
     : `<div class="${CARD} p-8 text-center text-sm text-slate-500">Nenhum guarda neste filtro.</div>`}${turmasMesHTML(y, m)}`;
 }
 
@@ -3833,7 +3835,7 @@ function statusGuarda(g, date) {
   }
   return st;
 }
-const tagTR = st => st && st.transicao && st.transicao.fase !== 'folga' ? `<div class="tr-tag">${st.transicao.fase === 'ultimo' ? 'ÚLT' : 'APR'}</div>` : '';
+const tagTR = st => st && st.transicao && st.transicao.fase !== 'folga' ? `<div class="eq-tag">${st.transicao.fase === 'ultimo' ? 'ÚLT' : 'APR'}</div>` : '';
 const tagCUR = st => st.atividades && st.atividades.length && codigoVisual(st) !== 'CUR' ? '<div class="ev-tag">CUR</div>' : '';  // quando o código da célula já é CUR, não repete
 function diasDaAtividade(a) { const o = []; for (let d = parseISO(a.inicio), f = parseISO(a.fim); d <= f && o.length < 366; d = addDays(d, 1)) o.push(iso(d)); return o; }
 function horasDiaAtividade(a) {
