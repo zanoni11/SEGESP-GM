@@ -54,6 +54,7 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
     window.sb = window.sb || { paraSb: x => x, paraApp: x => x }; const row = linhasDoEstado(state).config_modulos.get('transferencias'); out.persiste = !!row && row.dados.length === 1;
     const volta = normalizarEstado(JSON.parse(JSON.stringify(state))); out.volta = volta.transferencias.length === 1 && volta.transferencias[0].apresentacao === apr;
     out.erroSobre = trPlano(A, B, '2026-10-30', 3, dia(ult, 1)).erro;
+    { let h = ''; [ult, dia(apr, -1)].forEach(k => { mesSel = new Date(+k.slice(0, 4), +k.slice(5, 7) - 1, 1); view = 'mes'; render(); h += document.getElementById('main').innerHTML; }); out.vermelho = /eq-cell/.test(h) && /st-tr/.test(h) && /eq-tag/.test(h) && />ÚLT</.test(h) && /TR = transição entre equipes/.test(h); }
     out.telasDepois = telas();
     formGuarda(g.id); out.hist = /Histórico de equipe/.test(document.getElementById('m-body').innerText); closeModal(); trCancelar(t.id); const f = _confirmFn; _confirmFn = null; closeModal(); f && f();
     out.cancelou = state.transferencias.length === 0 && g.equipeId === A && cods('2026-09-01', '2026-12-31').indexOf('TR') < 0;
@@ -73,6 +74,7 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
   ok(r.edital && r.ipm, 'edital e IPM do mês da troca mostram as duas equipes e não quebram', r);
   ok(r.persiste && r.volta, 'a transferência é gravada (config_modulos) e volta do servidor', r);
   ok(/antes/.test(r.erroSobre || ''), 'apresentação antes da folga mínima é recusada', r.erroSobre);
+  ok(r.vermelho, 'a transição (TR, ÚLT e APR) aparece em vermelho no quadro do mês, com legenda', r);
   ok(r.telasDepois.length === 0, 'as telas principais abrem sem erro com a transferência registrada', r.telasDepois);
   ok(r.hist && r.cancelou, 'o histórico aparece na ficha e o cancelamento desfaz tudo', r);
   ok(erros.length === 0, 'sem erros de JS', erros);
