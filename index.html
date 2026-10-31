@@ -226,7 +226,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.10.31.2';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.10.31.3';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
@@ -828,6 +828,7 @@ function membrosNoPeriodo(eqId, ini, fim) {       // quem pertenceu à equipe em
     return false;
   });
 }
+const trDestaque = h => h.replace(/\(([^()<>]* até \d{2}\/\d{2}; [^()<>]* a partir de \d{2}\/\d{2})\)/g, '<span class="tr-doc">($1)</span>');   // transferência de equipe em vermelho nos documentos
 function notaTransf(g, ini, fim) {                // " (Alfa até 28/10; Delta desde 05/11)" para o edital
   const t = transfsDe(g.id).find(x => (x.ultimo >= ini && x.ultimo <= fim) || (x.apresentacao >= ini && x.apresentacao <= fim)); if (!t) return '';
   const n = id => (getEquipe(id) || {}).nome || '?', d = k => brCurto(parseISO(k));
@@ -3402,6 +3403,9 @@ function editalHTML(ano, mes) {
   const totaisHE = rx ? [...rx.porGuarda].sort((a, b) => impresso(a.g).localeCompare(impresso(b.g))) : [];
   const he = linhasHE.length ? secao('HORAS EXTRAS', `${rx.resumo.lancamentos} escalaç${rx.resumo.lancamentos > 1 ? 'ões' : 'ão'} · ${fmtHoras(rx.resumo.usadas)} horas`,
     `<div class="linhas">${linhasHE.join('')}</div>${docTotaisExtras ? `<div class="sub-h">Total por guarda no mês</div><div class="fer">${totaisHE.map(a => `<div><b>${esc(impresso(a.g))}</b><span>${fmtHoras(a.horas)}h</span></div>`).join('')}</div>` : ''}`) : '';
+  const trfLin = (state.transferencias || []).filter(t => t.ultimo <= fimM && t.apresentacao >= iniM).map(t => ({ t, g: getGuarda(t.guardaId) })).filter(x => x.g && !foraDoEdital(x.g)).sort((a, b) => a.t.ultimo < b.t.ultimo ? -1 : 1);
+  const trf = trfLin.length ? `<div class="trf-sec">${secao('TRANSFERÊNCIAS DE EQUIPE', `${trfLin.length} guarda${trfLin.length > 1 ? 's' : ''}`, `<div class="linhas">${trfLin.map(({ t, g }) => { const n = id => (getEquipe(id) || {}).nome || '?', d = k => brCurto(parseISO(k)), ini = iso(addDays(parseISO(t.ultimo), 1)), fim = iso(addDays(parseISO(t.apresentacao), -1)), nd = diffDias(ini, t.apresentacao);
+      return `<div class="lin"><div class="k"><b class="tr-doc">${esc(impresso(g))}</b><small>${esc(n(t.deId))} → ${esc(n(t.paraId))}</small></div><div class="v"><span class="tr-doc">Último plantão em ${esc(n(t.deId))}: ${d(t.ultimo)}</span> · folga de transição${nd > 0 ? ` ${d(ini)} a ${d(fim)} (${nd} dia${nd > 1 ? 's' : ''})` : ''} · <span class="tr-doc">apresenta-se em ${esc(n(t.paraId))}: ${d(t.apresentacao)}</span>${t.motivo ? ` <span class="vz">· ${esc(t.motivo)}</span>` : ''}</div></div>`; }).join('')}</div>`)}</div>` : '';
   const iniMes = iso(new Date(ano, mes, 1)), fimMes = iso(new Date(ano, mes + 1, 0));
   const evsMes = docIncluirRequal ? state.atividades.filter(a => a.tipo !== 'ead' && a.status !== 'cancelada' && a.inicio <= fimMes && a.fim >= iniMes).sort((a, b) => (a.inicio + (a.horaIni || '')) < (b.inicio + (b.horaIni || '')) ? -1 : 1) : [];
   const agenda = evsMes.length ? secao('TURMAS DE INSTRUÇÃO E REQUALIFICAÇÃO', `${evsMes.length} atividade${evsMes.length > 1 ? 's' : ''}`, `<div class="linhas">${evsMes.map(a => `<div class="lin"><div class="k"><b>${brCurto(parseISO(a.inicio))}${a.fim !== a.inicio ? ' a ' + brCurto(parseISO(a.fim)) : ''}</b><small>${a.horaIni && a.horaFim ? `${hhU(a.horaIni)} ÀS ${hhU(a.horaFim)}` : 'dia todo'}</small></div><div class="v">${esc(a.nome)}${a.local ? ` <span class="vz">· ${esc(a.local)}</span>` : ''}${(() => { const t = turmasDoMes(ano, mes).find(x => x.a.id === a.id); return t && t.linhas.length ? `<div class="bo-aus2" style="color:#5b6675">${t.linhas.map(x => `<b>${esc(impresso(x.g))}</b>: ${x.itens.map(it => esc(turmaItemTxt(a, it))).join('; ')}`).join(' · ')}</div>` : ''; })()}</div></div>`).join('')}</div>`) : '';
@@ -3410,8 +3414,8 @@ function editalHTML(ano, mes) {
   const leg = ops.length ? `<div class="leg"><b>Legenda:</b> Dia ${hr(ops, 'D')} · Noite ${hr(ops, 'N')}${ppc.length ? ` · PPC ${hr(ppc, 'D')}` : ''}${romu.length ? ` · ROMU ${hr(romu, 'D')}` : ''}. Letras indicam a equipe: ${ops.map(e => `${letraEq(e)} = ${e.nome}`).join(', ')}.${linhasHE.length ? ' <b>Hora extra</b> = guardas escalados no dia (ver quadro de horas extras).' : ''}</div>` : '';
   const cal = secao('CALENDÁRIO DE EQUIPES', '', calendarioHTML(ano, mes, ops, ppc, romu, heDia) + leg);
   const ant = new Date(ano, mes, 0), ass = state.assinatura || {};
-  return `${cabecalhoOficial('ESCALA DE SERVIÇO', `${MESES_EXT[mes]} de ${ano}`, `Em vigor a partir de 1º de ${MESES_EXT[mes].toLowerCase()} de ${ano}`)}
-    ${partes.join('')}<div class="quebra"></div>${fer}${he}${agenda}${cal}${assinaturaHTML(`${ass.cidade || ''}, ${dataExtenso(ant)}.`)}`;
+  return trDestaque(`${cabecalhoOficial('ESCALA DE SERVIÇO', `${MESES_EXT[mes]} de ${ano}`, `Em vigor a partir de 1º de ${MESES_EXT[mes].toLowerCase()} de ${ano}`)}
+    ${partes.join('')}<div class="quebra"></div>${trf}${fer}${he}${agenda}${cal}${assinaturaHTML(`${ass.cidade || ''}, ${dataExtenso(ant)}.`)}`);
 }
 
 /* ---------- Boletim diário ---------- */
@@ -3525,6 +3529,7 @@ const DOC_CSS = `
 .fer{display:grid;grid-template-columns:repeat(3,1fr);gap:0 18px}
 .fer div{display:flex;justify-content:space-between;gap:6px;border-bottom:1px dotted #d6dde6;padding:2px 0}
 .fer b{font-weight:600}.fer span{color:#374151}
+.tr-doc{color:#b91c1c;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}.trf-sec .sec-tit{border-color:#b91c1c;color:#b91c1c}
 .cal{width:100%;border-collapse:collapse;table-layout:fixed}
 .cal th{background:#173b66;color:#fff;font-size:9.5px;padding:4px 0;letter-spacing:.6px;font-weight:600;border:1px solid #173b66}
 .cal td{border:1px solid #d6dde6;vertical-align:top;padding:3px 5px;height:64px}
@@ -5519,7 +5524,7 @@ function ipmImprimir() { docTab = 'ipm'; go('docsup'); }
 /* ---------- Escala IPM › "Com trocas": escala final do mês, guarda por guarda ---------- */
 let ipmFUn = '', ipmFSo = false;
 const IPMF_ORD = ['Operacional', 'Almoxarifado', 'ROMU', 'PPC', 'COMON', 'Defesa Civil', 'GTAM', 'Vigias', 'Patrulhas', 'Administrativo'];
-const IPMF_COR = { D: ['#cfe3f7', '#12467d'], N: ['#2f3e55', '#ffffff'], E: ['#eef2f7', '#475569'], F: ['#ffffff', '#9aa5b4'], mais: ['#ffd9a8', '#7a3b00'], menos: ['#c9ecc9', '#14532d'], mud: ['#e1d3f2', '#4b2a75'], A: ['#f9d3d3', '#8a1c1c'] };
+const IPMF_COR = { D: ['#cfe3f7', '#12467d'], N: ['#2f3e55', '#ffffff'], E: ['#eef2f7', '#475569'], F: ['#ffffff', '#9aa5b4'], mais: ['#ffd9a8', '#7a3b00'], menos: ['#c9ecc9', '#14532d'], mud: ['#e1d3f2', '#4b2a75'], A: ['#f9d3d3', '#8a1c1c'], TR: ['#fecaca', '#991b1b'] };
 function ipmFCel(g, date) {                       // o que o guarda faz no dia, já com ausências, trocas e trocas de jornada
   const st = statusGuarda(g, date), exp = typeof eeExped === 'function' && eeExped(g);
   if (st.ausencia) return { c: st.codigo, k: 'A', aus: true, tit: tituloOcorrencia(st) };
@@ -5548,7 +5553,8 @@ function ipmFinalHTML(ano, mes, op) {
   const tabelas = eqs.map(e => {
     const gs = membrosNoPeriodo(e.id, iso(dias[0]), iso(dias[n - 1])).filter(g => (!ids || ids.has(g.id)) && (!op.so || comTroca(g))).sort((a, b) => (a.funcao === 'supervisor' ? 0 : 1) - (b.funcao === 'supervisor' ? 0 : 1) || nomeG(a.id).localeCompare(nomeG(b.id)));
     if (!gs.length) return '';
-    const dadosGE = g => dadosG(g).map((x, i) => equipeEm(g, iso(dias[i])) === e.id ? x : { c: '', k: 'F', semEq: true });   // dias em que o guarda era de outra equipe ficam em branco
+    const dadosGE = g => dadosG(g).map((x, i) => { const k = iso(dias[i]), q = equipeEm(g, k); if (q === e.id) return x; const tr = q === TRANSICAO ? transicaoDoDia(g, k) : null;   // dias em que o guarda era de outra equipe ficam em branco; a transição aparece como TR (vermelho) na equipe de origem
+      return tr && tr.t.deId === e.id ? { c: 'TR', k: 'TR', tit: tituloOcorrencia(statusGuardaBase(g, dias[i])) } : { c: '', k: 'F', semEq: true }; });
     const lin = gs.map(g => { const c = dadosGE(g), tr = c.filter(x => x.trab).length, au = c.filter(x => x.aus).length, tc = c.filter(x => x.marca).length, fo = n - tr - au - c.filter(x => x.semEq).length; tot.g++; tot.trab += tr; tot.folga += fo; tot.aus += au; tot.troca += tc;
       return `<tr><td class="ee-nm">${esc(nomeG(g.id))}${g.funcao === 'supervisor' ? ' <small>(sup.)</small>' : ''}</td>${c.map(celHTML).join('')}<td><b>${tr}</b></td><td>${fo}</td><td>${au || ''}</td><td>${tc || ''}</td></tr>`; }).join('');
     const emServ = dias.map((d, i) => gs.filter(g => dadosGE(g)[i].trab).length);
@@ -5556,7 +5562,7 @@ function ipmFinalHTML(ano, mes, op) {
       <thead><tr><th>Guarda</th>${dias.map(cabD).join('')}<th>Trab.</th><th>Folga</th><th>Aus.</th><th>Troc.</th></tr></thead><tbody>${lin}<tr class="ee-tot"><td class="ee-nm">Em serviço</td>${emServ.map(v => `<td>${v || ''}</td>`).join('')}<td colspan="4"></td></tr></tbody></table></div>`; }).join('');
   const gsSel = ids || (op.un || op.so ? new Set(state.guardas.filter(g => eqs.some(e => e.id === g.equipeId) && (!op.so || comTroca(g))).map(g => g.id)) : null);
   const tr = ipmFTrocas(ano, mes, gsSel);
-  const leg = [['D', 'D', 'Trabalha de dia'], ['N', 'N', 'Trabalha à noite'], ['E', 'E', 'Expediente'], ['F', '', 'Folga'], ['mais', '+', 'Trabalha em dia de folga (troca)'], ['menos', '−', 'Folga em dia de serviço (troca)'], ['mud', '↔', 'Muda de turno no mesmo dia'], ['A', 'FÉR/AT/AF/DS', 'Ausência']];
+  const leg = [['D', 'D', 'Trabalha de dia'], ['N', 'N', 'Trabalha à noite'], ['E', 'E', 'Expediente'], ['F', '', 'Folga'], ['mais', '+', 'Trabalha em dia de folga (troca)'], ['menos', '−', 'Folga em dia de serviço (troca)'], ['mud', '↔', 'Muda de turno no mesmo dia'], ['A', 'FÉR/AT/AF/DS', 'Ausência'], ['TR', 'TR', 'Transição entre equipes (último plantão → apresentação)']];
   return `${cabecalhoOficial(`ESCALA FINAL DO MÊS — ${MESES_UP[mes]}/${ano}`, 'Escala IPM já com as trocas e as trocas de jornada', `Dias trabalhados e folgas de cada guarda · emitida em ${br(new Date())}`)}
     <div class="ee-leg">${leg.map(([k, t, d]) => `<span><span class="c" style="background:${IPMF_COR[k][0]};color:${IPMF_COR[k][1]}">${esc(t || '·')}</span>${d}</span>`).join('')}<span><span class="c" style="background:#b3261e;color:#fff">dia</span>feriado</span><span>Letra do dia da semana na primeira linha · passe o mouse para ver a troca</span></div>
     <div class="ee-regra"><b>${tot.g}</b> guarda(s) · <b>${tot.trab}</b> dias trabalhados · <b>${tot.folga}</b> folgas · <b>${tot.aus}</b> dias de ausência · <b>${tot.troca}</b> dias alterados por troca. ${op.so ? 'Somente guardas com troca no mês.' : ''}</div>

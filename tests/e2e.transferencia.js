@@ -55,6 +55,7 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
     const volta = normalizarEstado(JSON.parse(JSON.stringify(state))); out.volta = volta.transferencias.length === 1 && volta.transferencias[0].apresentacao === apr;
     out.erroSobre = trPlano(A, B, '2026-10-30', 3, dia(ult, 1)).erro;
     { let h = ''; [ult, dia(apr, -1)].forEach(k => { mesSel = new Date(+k.slice(0, 4), +k.slice(5, 7) - 1, 1); view = 'mes'; render(); h += document.getElementById('main').innerHTML; }); out.vermelho = /eq-cell/.test(h) && /st-tr/.test(h) && /eq-tag/.test(h) && />ÚLT</.test(h) && /TR = transição entre equipes/.test(h); }
+    { const ed = editalHTML(2026, 9), edN = editalHTML(2026, 10); out.docEdital = /TRANSFERÊNCIAS DE EQUIPE/.test(ed) && /class="tr-doc"/.test(ed) && /<span class="tr-doc">\([^<]* até \d{2}\/\d{2}; [^<]* a partir de/.test(ed) && /TRANSFERÊNCIAS DE EQUIPE/.test(edN) && /Último plantão em/.test(edN); const ip = ipmFinalHTML(2026, 10); out.docIpm = />TR</.test(ip) && /#fecaca/.test(ip) && /Transição entre equipes/.test(ip); }
     out.telasDepois = telas();
     formGuarda(g.id); out.hist = /Histórico de equipe/.test(document.getElementById('m-body').innerText); closeModal(); trCancelar(t.id); const f = _confirmFn; _confirmFn = null; closeModal(); f && f();
     out.cancelou = state.transferencias.length === 0 && g.equipeId === A && cods('2026-09-01', '2026-12-31').indexOf('TR') < 0;
@@ -75,6 +76,8 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
   ok(r.persiste && r.volta, 'a transferência é gravada (config_modulos) e volta do servidor', r);
   ok(/antes/.test(r.erroSobre || ''), 'apresentação antes da folga mínima é recusada', r.erroSobre);
   ok(r.vermelho, 'a transição (TR, ÚLT e APR) aparece em vermelho no quadro do mês, com legenda', r);
+  ok(r.docEdital, 'o edital (Documentos) destaca em vermelho as transferências: nota ao lado do nome e seção própria com datas', r.docEdital);
+  ok(r.docIpm, 'a escala final do IPM marca a transição como TR em vermelho, com legenda', r.docIpm);
   ok(r.telasDepois.length === 0, 'as telas principais abrem sem erro com a transferência registrada', r.telasDepois);
   ok(r.hist && r.cancelou, 'o histórico aparece na ficha e o cancelamento desfaz tudo', r);
   ok(erros.length === 0, 'sem erros de JS', erros);
