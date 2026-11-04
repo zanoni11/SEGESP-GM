@@ -149,7 +149,7 @@
     @page { size: A4 landscape; margin: 8mm; }
     :root { padding: 0; }
     body { background: #fff; }
-    .no-print, nav, aside, header, button, .overlay, .sheet { display: none !important; }
+    .no-print, nav, aside, header.brand-bar, button, .overlay, .sheet { display: none !important; }   /* só a barra do app: o cabeçalho oficial dos documentos (header.of-cab) precisa sair no PDF */
     .md\:ml-56 { margin-left: 0 !important; }
     main { padding: 0 !important; }
     .grid-scroll { overflow: visible !important; max-height: none !important; border: 0 !important; }
@@ -226,7 +226,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.11.04.1';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.11.04.2';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
