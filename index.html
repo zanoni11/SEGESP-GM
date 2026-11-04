@@ -149,7 +149,7 @@
     @page { size: A4 landscape; margin: 8mm; }
     :root { padding: 0; }
     body { background: #fff; }
-    .no-print, nav, aside, header, button, .overlay, .sheet { display: none !important; }
+    .no-print, nav, aside, header.brand-bar, button, .overlay, .sheet { display: none !important; }   /* só a barra do app: o cabeçalho oficial dos documentos (header.of-cab) precisa sair no PDF */
     .md\:ml-56 { margin-left: 0 !important; }
     main { padding: 0 !important; }
     .grid-scroll { overflow: visible !important; max-height: none !important; border: 0 !important; }
@@ -226,7 +226,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.11.01.1';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.11.04.2';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
@@ -3633,7 +3633,10 @@ function viewDocs() {
 function atualizarFolha() { const f = $('doc-folha'); if (f) { f.innerHTML = folhaAtual(); ajustarZoomDoc(); } }
 function ajustarZoomDoc() { const f = $('doc-folha'); if (!f) return; const w = f.parentElement.clientWidth, B = docPaisagem() ? 1072 : 745; f.style.zoom = w && w < B ? Math.max(0.3, (w - 4) / B) : 1; }
 function salvarAviso(v) { const k = iso(docDia); state.boletins = state.boletins || {}; if (v.trim()) state.boletins[k] = v; else delete state.boletins[k]; save(); atualizarFolha(); }
+// os documentos usam os logos de Configurações → Logos e cabeçalho; sem eles, o espaço do brasão sai em branco no PDF e na impressão
+function avisoSemLogo() { if (!(state.logos && (state.logos.municipio || state.logos.gm))) toast('Os logos ainda não foram enviados: o documento sai sem brasão. Envie em Configurações → Logos e cabeçalho.', 'warn'); }
 function imprimirDoc() {
+  avisoSemLogo();
   const st = document.createElement('style'); st.id = 'doc-orient'; st.textContent = `@media print{${pageCss()}}`; document.head.appendChild(st);
   const fim = () => { st.remove(); window.removeEventListener('afterprint', fim); }; window.addEventListener('afterprint', fim);
   try { window.print(); } catch (e) { toast('A impressão não está disponível aqui. Use "Baixar arquivo" e imprima pelo navegador.', 'warn'); fim(); }
@@ -3641,6 +3644,7 @@ function imprimirDoc() {
 async function copiarBoletim() { (await copiarTexto(boletimTexto(boletimDados(iso(docDia))))) ? toast('Texto do boletim copiado') : toast('Não foi possível copiar', 'error'); }
 function htmlAutonomo() { return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(nomeArquivoDoc())}</title><style>body{margin:0;background:#fff}${DOC_CSS}${DOC_CSS_SUP}${DOC_CSS_EE}${pageCss()}</style></head><body><div class="doc-folha${docPaisagem() ? ' paisagem' : ''}">${folhaAtual()}</div></body></html>`; }
 async function baixarDoc() {
+  avisoSemLogo();
   const nome = nomeArquivoDoc() + '.html', conteudo = htmlAutonomo();
   try { if (window.claude && window.claude.use) { const dl = await window.claude.use('downloads'); if (dl) { await dl.save({ filename: nome, data: conteudo }); return; } } } catch (e) { if (e && e.code === 'declined') return; if (e && e.code === 'rate_limited') { toast('Aguarde um instante e tente de novo', 'warn'); return; } }
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([conteudo], { type: 'text/html' })); a.download = nome; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
