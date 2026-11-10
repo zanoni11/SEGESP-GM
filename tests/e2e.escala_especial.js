@@ -55,7 +55,7 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
     // guarda da própria equipe indicado para supervisionar não conta como agente
     const S = eeRuaBase(ee).find(x => x.supTit && x.pres.length), adj = S && S.pres[0];
     if (S) { const antes = eeRuaDados(ee).find(x => x.key === S.key); ee.adjuntos = [adj.id]; ee.cob.push({ id: 'cb_t', k: S.k, t: S.t, eq: S.e.id, tipo: 'sup', g: adj.id, m: true, adj: true }); const dep = eeRuaDados(ee).find(x => x.key === S.key);
-      out.supAgente = dep.supAg.length === 1 && dep.supAg[0].id === adj.id && !dep.pres.includes(adj) && !dep.folga.includes(adj) && dep.pres.length === antes.pres.length - 1 && dep.total === antes.total - 1 + 0 * dep.gt.length; ee.cob = ee.cob.filter(c => c.id !== 'cb_t'); }
+      out.supAgente = dep.supAg.length === 1 && dep.supAg[0].id === adj.id && !dep.pres.includes(adj) && !dep.folga.includes(adj) && dep.pres.length === antes.pres.length - 1 && dep.total === antes.total && dep.falta === antes.falta; ee.cob = ee.cob.filter(c => c.id !== 'cb_t'); }
     // supervisor do ROMU (coringa) só cobre se a equipe dele tiver 3 ou mais presentes, contando com ele
     { const rs = state.guardas.find(g => g.equipeId === 'r1' && g.funcao === 'supervisor'); ee.coringas = [rs.id];
       const alvo = eeRuaBase(ee).find(x => x.supTit && ['D', 'N'].includes(eeBase(rs, x.k)) && !eeComp(ee, rs, x.k) && eeDescansoOK(ee, rs, x.k, x.t, { troca: true }) && state.guardas.filter(g => g.equipeId === 'r1' && ['D', 'N'].includes(eeBase(g, x.k)) && !eeComp(ee, g, x.k) && !eeAus(g, x.k)).length >= 3);
@@ -73,7 +73,7 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
   ok(r.regraNoite && r.volta, 'noturno seguido de diurno é barrado e voltar ao GTAM devolve os extras', r);
   ok(r.sugerir && r.sugerirMenos && r.limpar, 'sugerir usa o GTAM só onde elimina extras; limpar volta tudo ao GTAM', r);
   ok(r.telaMoto && r.resumo && r.pdf, 'tela, resumo e PDF mostram extras sem e com o GTAM, a coluna GTAM e os remanejamentos', r);
-  ok(r.supAgente, 'guarda da equipe indicado para supervisionar não conta como agente', r);
+  ok(r.supAgente, 'guarda da equipe indicado para supervisionar conta como um dos agentes (indicado + os demais: 1 + 4)', r);
   ok(r.romuAlvo && r.romu3 && r.romu2, 'supervisor do ROMU aparece para cobrir com 3 ou mais na equipe e some com menos', r);
   ok(erros.length === 0, 'sem erros de JS', erros);
   await browser.close(); srv.close();
