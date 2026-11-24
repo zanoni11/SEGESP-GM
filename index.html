@@ -226,7 +226,7 @@
    Fonte única: cada guarda tem equipeId. Membros, supervisor e
    agentes de uma equipe são sempre derivados dos guardas.
    ============================================================ */
-const VERSAO_APP = '2026.11.24.2';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
+const VERSAO_APP = '2026.11.24.3';   // mostrada na tela de login; ao mudar, troque também o CACHE do sw.js
 // Chaves ANTIGAS (versão que guardava tudo no navegador): esta versão só as lê, para o envio único ao servidor
 const STORAGE_KEY = 'escalasGM.pinhais.v1';
 const BACKUP_KEY = 'escalasGM.pinhais.backup.v1';
@@ -3365,7 +3365,7 @@ const horSup = c => { const D = c.horarios && c.horarios.D && c.horarios.D.super
 const dataExtenso = d => `${d.getDate()} de ${MESES_EXT[d.getMonth()].toLowerCase()} de ${d.getFullYear()}`;
 function assinaturaHTML(linhaData) {
   const a = state.assinatura || {};
-  return `<div class="assin"><p class="cid">${esc(linhaData)}</p><div class="linha"></div><b>${esc(a.nome || '')}</b><div>${esc(a.cargo || '')}</div></div>`;
+  return `<div class="assin"><div class="linha"></div><b>${esc(a.nome || '')}</b><div>${esc(a.cargo || '')}</div><p class="cid">${esc(linhaData)}</p></div>`;
 }
 function calendarioHTML(ano, mes, ops, ppc, romu, heDia) {
   const n = diasNoMes(ano, mes), primeiro = new Date(ano, mes, 1).getDay(), fer = new Map((state.feriados || []).map(f => [f.data, f.nome]));
@@ -3588,8 +3588,8 @@ const DOC_CSS = `
 .sub-h{margin:8px 0 3px;font-size:9.5px;font-weight:700;letter-spacing:.5px;color:#173b66}
 .leg{font-size:9px;color:#5b6675;margin-top:5px;line-height:1.45}
 .assin{text-align:center;margin-top:20px;break-inside:avoid}
-.assin .cid{margin:0 0 26px;color:#374151;font-size:11px}
-.assin .linha{width:260px;border-top:1px solid #111827;margin:0 auto 3px}
+.assin .cid{margin:22px 0 0;color:#374151;font-size:11px;text-align:right}   /* local e data no canto inferior direito, depois da assinatura */
+.assin .linha{width:260px;border-top:1px solid #111827;margin:38px auto 3px}
 .assin b{font-size:11px}
 .linhas .lin{display:grid;grid-template-columns:225px 1fr;gap:10px;padding:2px 0;border-bottom:1px dotted #d6dde6}
 .lin .k b{color:#173b66;font-size:10.5px}.lin .k small{color:#6b7280;font-size:9px;margin-left:6px}

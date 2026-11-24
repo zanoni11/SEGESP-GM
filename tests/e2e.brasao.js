@@ -45,6 +45,8 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
   ok(dt.bo === `Pinhais, ${dt.hoje}.`, 'o boletim sai com a data de hoje na assinatura, mesmo de um dia antigo', dt);
   const rp = await page.evaluate(() => { docTab = 'edital'; const css = pageCss(), arq = htmlAutonomo(), hoje = br(new Date()); return { hoje, css: css.includes(`@bottom-right{content:"Emitido em ${hoje} · Página " counter(page) " de " counter(pages)`), arq: arq.includes(`Emitido em ${hoje} · Página`), esq: /@bottom-left\{content:"[^"]+"/.test(css) }; });
   ok(rp.css && rp.arq && rp.esq, 'o rodapé do PDF e do arquivo baixado traz, no canto inferior direito, a data de emissão e a página (e o rodapé da esquerda continua)', rp);
+  const sg = await page.evaluate(() => { state.assinatura = { nome: 'FULANO', cargo: 'Coordenador', cidade: 'Pinhais' }; const h = assinaturaHTML('Pinhais, 24 de novembro de 2026.'), i = h.indexOf('class="linha"'), j = h.indexOf('class="cid"'), css = document.getElementById('doc-css') ? document.getElementById('doc-css').textContent : DOC_CSS; return { depois: i > 0 && j > i && h.indexOf('Coordenador') < j, dir: /\.assin \.cid\{[^}]*text-align:right/.test(DOC_CSS) }; });
+  ok(sg.depois && sg.dir, 'a data da assinatura sai depois da assinatura, alinhada à direita (canto inferior direito da última página)', sg);
   ok(erros.length === 0, 'sem erros de JS', erros);
   await browser.close(); srv.close();
   console.log(`\n${falhas ? '❌' : '✅'} ${passou} verificações passaram, ${falhas} falharam`); process.exit(falhas ? 1 : 0);
