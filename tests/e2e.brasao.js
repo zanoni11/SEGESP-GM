@@ -43,6 +43,8 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
     return { hoje, ed, bo, antigo, ee: typeof eeFolhaHTML === 'function' }; });
   ok(dt.ed === `Pinhais, ${dt.hoje}.` && dt.ed.indexOf(dt.antigo) < 0, 'o edital sai com a data de hoje na assinatura (não mais o fim do mês anterior)', dt);
   ok(dt.bo === `Pinhais, ${dt.hoje}.`, 'o boletim sai com a data de hoje na assinatura, mesmo de um dia antigo', dt);
+  const rp = await page.evaluate(() => { docTab = 'edital'; const css = pageCss(), arq = htmlAutonomo(), hoje = br(new Date()); return { hoje, css: css.includes(`@bottom-right{content:"Emitido em ${hoje} · Página " counter(page) " de " counter(pages)`), arq: arq.includes(`Emitido em ${hoje} · Página`), esq: /@bottom-left\{content:"[^"]+"/.test(css) }; });
+  ok(rp.css && rp.arq && rp.esq, 'o rodapé do PDF e do arquivo baixado traz, no canto inferior direito, a data de emissão e a página (e o rodapé da esquerda continua)', rp);
   ok(erros.length === 0, 'sem erros de JS', erros);
   await browser.close(); srv.close();
   console.log(`\n${falhas ? '❌' : '✅'} ${passou} verificações passaram, ${falhas} falharam`); process.exit(falhas ? 1 : 0);
