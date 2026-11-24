@@ -37,6 +37,12 @@ const srv = http.createServer((q, s) => { let u = decodeURIComponent(q.url.split
   ok(r.comLogos.imgs === 2 && r.comLogos.carregadas === 2 && r.comLogos.html, 'com logos enviados as duas imagens aparecem na folha e no arquivo baixado', r.comLogos);
   const av = await page.evaluate(() => { state.logos = { municipio: '', gm: '' }; document.getElementById('toasts').innerHTML = ''; avisoSemLogo(); const a = document.getElementById('toasts').innerText; document.getElementById('toasts').innerHTML = ''; state.logos = { municipio: 'data:image/png;base64,AAAA', gm: '' }; avisoSemLogo(); return { aviso: a, semAvisoComLogo: document.getElementById('toasts').innerText === '' }; });
   ok(/sai sem brasão/.test(av.aviso) && av.semAvisoComLogo, 'ao imprimir ou baixar sem logos o app avisa; com logo não avisa', av);
+  const dt = await page.evaluate(() => { const hoje = dataExtenso(new Date()), ass = d => (d.match(/<p class="cid">([^<]*)<\/p>/) || [])[1] || '';
+    state.assinatura = Object.assign({}, state.assinatura, { cidade: 'Pinhais' }); docIncluirExtras = false;
+    const ed = ass(editalHTML(2025, 0)), antigo = dataExtenso(new Date(2025, 0, 0)); docTab = 'boletim'; docDia = new Date(2025, 5, 10); const bo = ass(folhaAtual()); docTab = 'edital';
+    return { hoje, ed, bo, antigo, ee: typeof eeFolhaHTML === 'function' }; });
+  ok(dt.ed === `Pinhais, ${dt.hoje}.` && dt.ed.indexOf(dt.antigo) < 0, 'o edital sai com a data de hoje na assinatura (não mais o fim do mês anterior)', dt);
+  ok(dt.bo === `Pinhais, ${dt.hoje}.`, 'o boletim sai com a data de hoje na assinatura, mesmo de um dia antigo', dt);
   ok(erros.length === 0, 'sem erros de JS', erros);
   await browser.close(); srv.close();
   console.log(`\n${falhas ? '❌' : '✅'} ${passou} verificações passaram, ${falhas} falharam`); process.exit(falhas ? 1 : 0);
